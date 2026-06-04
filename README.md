@@ -218,18 +218,6 @@ For a real deployment, the next hardening steps are authenticated Streamable HTT
 
 The short design write-up is in [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md), and the production roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
-## Interview Demo Script
-
-1. Inspect a degraded `payments-api` deployment and point out its replica count, error rate, latency, and correlation ID.
-2. Read production config and show that the upstream API key is redacted.
-3. Attempt to run a diagnostic containing `curl`; MCP-Guard blocks the request before execution.
-4. Attempt an unapproved rollback; the approval gate blocks it.
-5. Run the approved rollback drill and inspect its audit event.
-6. Disable `platform.health` and prove the kill switch takes effect immediately.
-7. Generate the incident summary and open `/metrics`.
-
-The core implementation intentionally stays small enough to explain line by line during a system-design discussion.
-
 ## License
 
 This project is licensed under the Apache License 2.0. In brief, you may use, modify, distribute, and sublicense the code, including in commercial projects, as long as you preserve copyright and license notices. The license also includes an express patent grant and is provided without warranties.
