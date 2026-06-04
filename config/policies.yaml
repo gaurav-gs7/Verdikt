@@ -1,0 +1,48 @@
+{
+  "allow_demo_boolean_approval": true,
+  "blocked_argument_patterns": [
+    "(^|/)\\.ssh(/|$)",
+    "(^|/)\\.aws(/|$)",
+    "(^|/)\\.env$",
+    "id_rsa",
+    "BEGIN [A-Z ]*PRIVATE KEY",
+    "\\bcurl\\b",
+    "\\bwget\\b"
+  ],
+  "redacted_key_patterns": [
+    "api[_-]?key",
+    "authorization",
+    "password",
+    "secret",
+    "token"
+  ],
+  "redacted_value_patterns": [
+    "sk-[A-Za-z0-9_-]{8,}",
+    "ghp_[A-Za-z0-9]{8,}",
+    "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----"
+  ],
+  "approval_required": [
+    "platform.restart_deployment",
+    "platform.rollback_deployment"
+  ],
+  "rate_limits_per_minute": {
+    "default": 30,
+    "platform.health": 10,
+    "platform.rollback_deployment": 3
+  },
+  "allowed_tools": {
+    "platform-ops": [
+      "platform.health",
+      "platform.read_config",
+      "platform.read_logs",
+      "platform.run_diagnostic",
+      "platform.restart_deployment",
+      "platform.rollback_deployment"
+    ],
+    "incident": [
+      "incident.create",
+      "incident.attach_evidence",
+      "incident.timeline"
+    ]
+  }
+}
