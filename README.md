@@ -75,6 +75,10 @@ Start the dashboard:
 
 Then open [http://127.0.0.1:8080](http://127.0.0.1:8080). The page includes buttons for allowed calls, blocked calls, an approved rollback drill, secret redaction, and kill-switch testing.
 
+Loopback is the only unauthenticated mode. Binding to any other interface fails
+closed unless `MCP_GUARD_API_TOKEN` is set. The browser asks for the token once
+and keeps it in session storage.
+
 To expose MCP-Guard itself as a stdio MCP server:
 
 ```bash
@@ -165,8 +169,14 @@ Build and run the dashboard container:
 
 ```bash
 make docker-build
-docker run --rm -p 8080:8080 mcp-guard:local
+docker run --rm -p 8080:8080 \
+  -e MCP_GUARD_API_TOKEN='replace-with-a-random-secret' \
+  mcp-guard:local
 ```
+
+When authentication is enabled, API clients must send
+`Authorization: Bearer $MCP_GUARD_API_TOKEN`. The health endpoint remains
+unauthenticated for container probes; dashboard APIs and `/metrics` are protected.
 
 ## Optional OpenInference Tracing
 
@@ -212,7 +222,10 @@ The MVP directly addresses:
 - Repeated high-volume calls to expensive or destructive tools.
 - Fast containment of a compromised tool or MCP server.
 
-For a real deployment, the next hardening steps are authenticated Streamable HTTP transport, durable distributed rate limits, signed policy bundles, external secret management, OpenTelemetry traces, an append-only audit sink, and human approval integration.
+For a real deployment, the next hardening steps are an official authenticated
+Streamable HTTP MCP transport (the current gateway is stdio), durable distributed
+rate limits, signed policy bundles, external secret management, an append-only
+audit sink, and human approval integration.
 
 ## Design Notes
 
@@ -221,3 +234,6 @@ The short design write-up is in [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md), an
 ## License
 
 This project is licensed under the Apache License 2.0. In brief, you may use, modify, distribute, and sublicense the code, including in commercial projects, as long as you preserve copyright and license notices. The license also includes an express patent grant and is provided without warranties.
+
+See [LICENSE](LICENSE) for the full terms and [SECURITY.md](SECURITY.md) for the
+supported deployment boundary and vulnerability reporting guidance.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from .backends import run_backend
@@ -64,7 +65,7 @@ def main() -> None:
     elif args.command == "serve-mcp":
         serve_gateway(runtime)
     elif args.command == "dashboard":
-        serve_dashboard(runtime, args.host, args.port)
+        serve_dashboard(runtime, args.host, args.port, os.getenv("MCP_GUARD_API_TOKEN"))
     elif args.command == "issue-approval":
         try:
             arguments = json.loads(args.arguments)

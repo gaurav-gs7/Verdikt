@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -8,10 +9,28 @@ from urllib.parse import urlparse
 
 from .runtime import MCPGuardRuntime
 
+MAX_REQUEST_BODY_BYTES = 1_048_576
+
+
+class RequestBodyTooLarge(ValueError):
+    pass
+
 
 class DashboardServer(ThreadingHTTPServer):
-    def __init__(self, address: tuple[str, int], runtime: MCPGuardRuntime) -> None:
+    daemon_threads = True
+
+    def __init__(
+        self,
+        address: tuple[str, int],
+        runtime: MCPGuardRuntime,
+        api_token: str | None = None,
+    ) -> None:
+        if not _is_loopback_host(address[0]) and not api_token:
+            raise ValueError(
+                "MCP_GUARD_API_TOKEN is required when the dashboard binds outside loopback"
+            )
         self.runtime = runtime
+        self.api_token = api_token
         super().__init__(address, DashboardHandler)
 
 
@@ -24,6 +43,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._reply(DASHBOARD_HTML, content_type="text/html; charset=utf-8")
         elif path == "/healthz":
             self._json({"status": "ok"})
+        elif not self._authorized():
+            self._unauthorized()
         elif path == "/api/tools":
             self._json(self.server.runtime.list_tools())
         elif path == "/api/events":
@@ -39,6 +60,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
+        if not self._authorized():
+            self._unauthorized()
+            return
         try:
             body = self._body()
             if path == "/api/call":
@@ -69,6 +93,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._json(self.server.runtime.summarize_recent_events())
             else:
                 self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+        except RequestBodyTooLarge as exc:
+            self._json({"error": str(exc)}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 
@@ -77,7 +103,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def _body(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
+        if length < 0:
+            raise ValueError("Content-Length cannot be negative")
+        if length > MAX_REQUEST_BODY_BYTES:
+            raise RequestBodyTooLarge(
+                f"request body exceeds {MAX_REQUEST_BODY_BYTES} bytes"
+            )
         return json.loads(self.rfile.read(length) or b"{}")
+
+    def _authorized(self) -> bool:
+        expected = self.server.api_token
+        if expected is None:
+            return True
+        scheme, _, provided = self.headers.get("Authorization", "").partition(" ")
+        return scheme.lower() == "bearer" and secrets.compare_digest(provided, expected)
+
+    def _unauthorized(self) -> None:
+        self._reply(
+            json.dumps({"error": "bearer token required"}),
+            HTTPStatus.UNAUTHORIZED,
+            "application/json",
+            {"WWW-Authenticate": "Bearer"},
+        )
 
     def _json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         self._reply(json.dumps(payload, indent=2), status, "application/json")
@@ -87,18 +134,27 @@ class DashboardHandler(BaseHTTPRequestHandler):
         body: str,
         status: HTTPStatus = HTTPStatus.OK,
         content_type: str = "text/plain",
+        headers: dict[str, str] | None = None,
     ) -> None:
         encoded = body.encode()
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(encoded)))
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(encoded)
 
 
-def serve_dashboard(runtime: MCPGuardRuntime, host: str, port: int) -> None:
-    server = DashboardServer((host, port), runtime)
-    print(f"MCP-Guard dashboard listening on http://{host}:{port}", flush=True)
+def serve_dashboard(
+    runtime: MCPGuardRuntime,
+    host: str,
+    port: int,
+    api_token: str | None = None,
+) -> None:
+    server = DashboardServer((host, port), runtime, api_token)
+    auth_mode = "bearer auth enabled" if api_token else "loopback-only without auth"
+    print(f"MCP-Guard dashboard listening on http://{host}:{port} ({auth_mode})", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -106,6 +162,10 @@ def serve_dashboard(runtime: MCPGuardRuntime, host: str, port: int) -> None:
     finally:
         server.server_close()
         runtime.close()
+
+
+def _is_loopback_host(host: str) -> bool:
+    return host.lower() in {"127.0.0.1", "::1", "localhost"}
 
 
 DASHBOARD_HTML = """<!doctype html>
@@ -145,7 +205,17 @@ DASHBOARD_HTML = """<!doctype html>
   <h2>Audit Trail</h2><pre id="events"></pre>
   <script>
     async function request(path, options = {}) {
+      const token = window.sessionStorage.getItem('mcpGuardToken');
+      options.headers = {...(options.headers || {})};
+      if (token) options.headers.Authorization = `Bearer ${token}`;
       const response = await fetch(path, options);
+      if (response.status === 401) {
+        const supplied = window.prompt('MCP-Guard API token');
+        if (supplied) {
+          window.sessionStorage.setItem('mcpGuardToken', supplied);
+          return request(path, options);
+        }
+      }
       return await response.json();
     }
     async function callTool(server, tool, arguments_) {
