@@ -1,10 +1,10 @@
-# MCP-Guard Design Notes
+# GateTrace MCP Design Notes
 
-These notes capture the main engineering choices behind MCP-Guard and are useful for interview walkthroughs.
+These notes capture the main engineering choices behind GateTrace MCP and are useful for interview walkthroughs.
 
 ## Core Boundary
 
-MCP-Guard is a gateway, not an agent. It does not try to make the LLM smarter. It constrains what the agent can do when it reaches for production tools.
+GateTrace MCP is a gateway, not an agent. It does not try to make the LLM smarter. It constrains what the agent can do when it reaches for production tools.
 
 The central rule is:
 
@@ -35,15 +35,16 @@ Each request receives a deterministic risk score. The score is not a machine-lea
 
 ## Observability
 
-MCP-Guard emits three kinds of evidence:
+GateTrace MCP emits three kinds of evidence:
 
 - SQLite audit events for durable local evidence.
 - Prometheus metrics for aggregate operational signals.
 - OpenInference-compatible spans for request-level trace explanation.
+- AWS CloudWatch metrics/logs and X-Ray traces for serverless deployments.
+- DynamoDB audit/state records and EventBridge/SQS findings for AWS operations.
 
 Those are deliberately separate. Traces may be sampled; audits should not be.
 
 ## Production Upgrade Path
 
-The current project is production-shaped but local. The next real upgrades are OAuth/OIDC identity, Redis-backed distributed rate limits, Postgres audit storage, OPA/Cedar policies, Kubernetes/Prometheus integrations, and append-only audit export.
-
+The current project includes a real MCP Streamable HTTP server, a guarded Kubernetes adapter, a free-tier friendly EC2/Docker deployment, and a serverless AIOps control-plane variant. The next real upgrades are Cognito/OIDC identity, Redis-backed distributed rate limits for the EC2 path, OPA/Cedar policies, deeper Prometheus/Kubernetes integrations, append-only audit export, and signed release provenance.

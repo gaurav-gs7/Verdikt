@@ -53,6 +53,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json(self.server.runtime.policy.kill_switches())
         elif path == "/api/telemetry":
             self._json(self.server.runtime.telemetry.status())
+        elif path == "/api/audit-integrity":
+            self._json(self.server.runtime.audit.verify_chain())
         elif path == "/metrics":
             self._reply(self.server.runtime.metrics.render(), content_type="text/plain; version=0.0.4")
         else:
@@ -154,7 +156,7 @@ def serve_dashboard(
 ) -> None:
     server = DashboardServer((host, port), runtime, api_token)
     auth_mode = "bearer auth enabled" if api_token else "loopback-only without auth"
-    print(f"MCP-Guard dashboard listening on http://{host}:{port} ({auth_mode})", flush=True)
+    print(f"GateTrace MCP dashboard listening on http://{host}:{port} ({auth_mode})", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -173,7 +175,7 @@ DASHBOARD_HTML = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>MCP-Guard</title>
+  <title>GateTrace MCP</title>
   <style>
     :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     body { max-width: 1180px; margin: 0 auto; padding: 28px; background: #07111b; color: #d7e3ef; }
@@ -188,7 +190,7 @@ DASHBOARD_HTML = """<!doctype html>
   </style>
 </head>
 <body>
-  <h1>MCP-Guard</h1>
+  <h1>GateTrace MCP</h1>
   <p>Runtime firewall and reliability layer for MCP servers</p>
   <button onclick="callTool('platform-ops','platform.health',{service:'payments-api'})">Inspect Payments Health</button>
   <button onclick="callTool('platform-ops','platform.read_config',{service:'payments-api'})">Read Sanitized Config</button>

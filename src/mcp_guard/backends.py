@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 import secrets
+import subprocess
 from typing import Any
 
 from .models import Tool
@@ -9,10 +11,23 @@ from .protocol import MCPProtocolError, serve_stdio
 
 
 def _schema(**properties: dict[str, str]) -> dict[str, Any]:
+    optional = {
+        "approved",
+        "approval_token",
+        "actor",
+        "auto_create_incident",
+        "dry_run",
+        "environment",
+        "incident_id",
+        "requested_by",
+        "rollback_plan",
+        "shadow_mode",
+        "user",
+    }
     return {
         "type": "object",
         "properties": properties,
-        "required": [name for name in properties if name != "approved"],
+        "required": [name for name in properties if name not in optional],
         "additionalProperties": False,
     }
 
@@ -25,7 +40,7 @@ PLATFORM_TOOLS = [
     ),
     Tool(
         "platform.read_config",
-        "Read runtime configuration for a production service. Secrets are redacted by MCP-Guard.",
+        "Read runtime configuration for a production service. Secrets are redacted by GateTrace MCP.",
         _schema(service={"type": "string"}),
     ),
     Tool(
@@ -41,7 +56,18 @@ PLATFORM_TOOLS = [
     Tool(
         "platform.restart_deployment",
         "Perform a rolling restart of a production deployment after explicit approval.",
-        _schema(service={"type": "string"}, approved={"type": "boolean"}),
+        _schema(
+            service={"type": "string"},
+            actor={"type": "string"},
+            environment={"type": "string"},
+            rollback_plan={"type": "string"},
+            approval_token={"type": "string"},
+            approved={"type": "boolean"},
+            dry_run={"type": "boolean"},
+            shadow_mode={"type": "boolean"},
+            incident_id={"type": "string"},
+            auto_create_incident={"type": "boolean"},
+        ),
     ),
     Tool(
         "platform.rollback_deployment",
@@ -49,8 +75,46 @@ PLATFORM_TOOLS = [
         _schema(
             service={"type": "string"},
             version={"type": "string"},
+            actor={"type": "string"},
+            environment={"type": "string"},
+            rollback_plan={"type": "string"},
+            approval_token={"type": "string"},
             approved={"type": "boolean"},
+            dry_run={"type": "boolean"},
+            shadow_mode={"type": "boolean"},
+            incident_id={"type": "string"},
+            auto_create_incident={"type": "boolean"},
         ),
+    ),
+]
+
+KUBERNETES_TOOLS = [
+    Tool(
+        "kubernetes.get_pod",
+        "Read pod status from a Kubernetes namespace. Uses a safe simulator by default.",
+        _schema(namespace={"type": "string"}, pod={"type": "string"}),
+    ),
+    Tool(
+        "kubernetes.restart_pod",
+        "Restart a Kubernetes pod through a guarded delete-and-recreate workflow. Requires actor, approval, and rollback plan in production.",
+        _schema(
+            namespace={"type": "string"},
+            pod={"type": "string"},
+            actor={"type": "string"},
+            environment={"type": "string"},
+            rollback_plan={"type": "string"},
+            approval_token={"type": "string"},
+            approved={"type": "boolean"},
+            dry_run={"type": "boolean"},
+            shadow_mode={"type": "boolean"},
+            incident_id={"type": "string"},
+            auto_create_incident={"type": "boolean"},
+        ),
+    ),
+    Tool(
+        "kubernetes.rollout_status",
+        "Read rollout status for a Kubernetes deployment.",
+        _schema(namespace={"type": "string"}, deployment={"type": "string"}),
     ),
 ]
 
@@ -148,6 +212,114 @@ class PlatformOpsBackend:
         raise MCPProtocolError(f"unsupported platform tool: {tool}")
 
 
+class KubernetesBackend:
+    """Kubernetes operations adapter.
+
+    The default mode is a deterministic simulator so the project remains safe,
+    portable, and free-tier friendly. Set MCP_GUARD_KUBERNETES_MODE=kubectl to
+    point the adapter at a real kubeconfig for a controlled lab environment.
+    """
+
+    def __init__(self) -> None:
+        self.mode = os.getenv("MCP_GUARD_KUBERNETES_MODE", "simulated").lower()
+        self.pods = {
+            ("prod", "payment-service-xyz"): {
+                "namespace": "prod",
+                "pod": "payment-service-xyz",
+                "deployment": "payment-service",
+                "status": "Running",
+                "restarts": 0,
+                "ready": True,
+                "node": "ip-10-0-12-44.ec2.internal",
+            },
+            ("prod", "payments-api-7d9f5d"): {
+                "namespace": "prod",
+                "pod": "payments-api-7d9f5d",
+                "deployment": "payments-api",
+                "status": "Running",
+                "restarts": 1,
+                "ready": True,
+                "node": "ip-10-0-9-13.ec2.internal",
+            },
+        }
+
+    def call(self, tool: str, arguments: dict[str, Any]) -> Any:
+        if tool == "kubernetes.get_pod":
+            return self._get_pod(arguments)
+        if tool == "kubernetes.restart_pod":
+            return self._restart_pod(arguments)
+        if tool == "kubernetes.rollout_status":
+            return self._rollout_status(arguments)
+        raise MCPProtocolError(f"unsupported kubernetes tool: {tool}")
+
+    def _get_pod(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        namespace = arguments["namespace"]
+        pod = arguments["pod"]
+        if self.mode == "kubectl":
+            return self._kubectl_json(["get", "pod", pod, "-n", namespace, "-o", "json"])
+        return dict(self._pod(namespace, pod))
+
+    def _restart_pod(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        namespace = arguments["namespace"]
+        pod = arguments["pod"]
+        if self.mode == "kubectl":
+            output = self._kubectl(["delete", "pod", pod, "-n", namespace, "--wait=false"])
+            return {
+                "namespace": namespace,
+                "pod": pod,
+                "action": "pod_restart",
+                "mode": "kubectl",
+                "status": "delete_requested",
+                "output": output,
+            }
+        state = self._pod(namespace, pod)
+        state["restarts"] += 1
+        state["last_restart_at"] = dt.datetime.now(dt.UTC).isoformat()
+        return {
+            "namespace": namespace,
+            "pod": pod,
+            "deployment": state["deployment"],
+            "action": "pod_restart",
+            "mode": "simulated",
+            "status": "completed",
+            "restarts": state["restarts"],
+        }
+
+    def _rollout_status(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        namespace = arguments["namespace"]
+        deployment = arguments["deployment"]
+        if self.mode == "kubectl":
+            output = self._kubectl(["rollout", "status", f"deployment/{deployment}", "-n", namespace])
+            return {"namespace": namespace, "deployment": deployment, "status": output}
+        matching = [pod for pod in self.pods.values() if pod["namespace"] == namespace and pod["deployment"] == deployment]
+        return {
+            "namespace": namespace,
+            "deployment": deployment,
+            "available_pods": len([pod for pod in matching if pod["ready"]]),
+            "desired_pods": max(len(matching), 1),
+            "status": "healthy" if matching else "unknown",
+        }
+
+    def _pod(self, namespace: str, pod: str) -> dict[str, Any]:
+        key = (namespace, pod)
+        if key not in self.pods:
+            raise MCPProtocolError(f"unknown pod: {namespace}/{pod}")
+        return self.pods[key]
+
+    @staticmethod
+    def _kubectl(args: list[str]) -> str:
+        command = ["kubectl", *args]
+        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=20)
+        if completed.returncode != 0:
+            raise MCPProtocolError(completed.stderr.strip() or "kubectl command failed")
+        return completed.stdout.strip()
+
+    def _kubectl_json(self, args: list[str]) -> dict[str, Any]:
+        import json
+
+        return json.loads(self._kubectl(args))
+
+
 class IncidentBackend:
     def __init__(self) -> None:
         self.incidents: dict[str, dict[str, Any]] = {}
@@ -190,5 +362,9 @@ def run_backend(name: str) -> None:
     if name == "incident":
         backend = IncidentBackend()
         serve_stdio("incident-mcp", INCIDENT_TOOLS, backend.call)
+        return
+    if name == "kubernetes":
+        backend = KubernetesBackend()
+        serve_stdio("kubernetes-mcp", KUBERNETES_TOOLS, backend.call)
         return
     raise SystemExit(f"unknown backend: {name}")

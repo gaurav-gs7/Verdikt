@@ -20,12 +20,18 @@ class RiskEngine:
         if server == "platform-ops":
             score += 10
             evidence.append("production operations server")
+        if server == "kubernetes":
+            score += 20
+            evidence.append("kubernetes operations server")
         if tool.endswith("rollback_deployment"):
             score += 55
             evidence.append("deployment rollback can change live production traffic")
         elif tool.endswith("restart_deployment"):
             score += 45
             evidence.append("deployment restart can affect availability")
+        elif tool.endswith("restart_pod"):
+            score += 50
+            evidence.append("pod restart can affect production availability")
         elif tool.endswith("run_diagnostic"):
             score += 25
             evidence.append("diagnostic commands can expose infrastructure details")
@@ -38,6 +44,12 @@ class RiskEngine:
         if arguments.get("service") == "payments-api":
             score += 10
             evidence.append("payments-api is business critical")
+        if arguments.get("namespace") in {"prod", "production"}:
+            score += 10
+            evidence.append("request targets a production namespace")
+        if "payment" in str(arguments.get("pod", "")):
+            score += 10
+            evidence.append("request targets a payment-system pod")
         if any(str(value).startswith("payments-api@") for value in arguments.values()):
             score += 5
             evidence.append("request references a production release artifact")
@@ -51,4 +63,3 @@ class RiskEngine:
         else:
             level = "low"
         return RiskAssessment(score, level, evidence)
-

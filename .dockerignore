@@ -1,8 +1,8 @@
 .venv/
 data/
+build/
 __pycache__/
 *.pyc
 *.egg-info/
 .git/
 .DS_Store
-

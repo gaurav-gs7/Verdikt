@@ -16,7 +16,7 @@ def serve_gateway(runtime: MCPGuardRuntime) -> None:
             tools.append(
                 Tool(
                     upstream["name"],
-                    f"[proxied via MCP-Guard from {server}] {upstream['description']}",
+                    f"[proxied via GateTrace MCP from {server}] {upstream['description']}",
                     upstream["inputSchema"],
                 )
             )
@@ -35,7 +35,6 @@ def serve_gateway(runtime: MCPGuardRuntime) -> None:
         return guarded.as_dict()
 
     try:
-        serve_stdio("mcp-guard", tools, call)
+        serve_stdio("gatetrace-mcp", tools, call)
     finally:
         runtime.close()
-

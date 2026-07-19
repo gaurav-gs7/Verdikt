@@ -5,9 +5,11 @@ from typing import Any
 
 from .runtime import MCPGuardRuntime
 
+ROLLBACK_PLAN = "verify service health and restore previous known-good release if errors increase"
+
 
 def run_demo(runtime: MCPGuardRuntime) -> None:
-    print("MCP-Guard interview demo")
+    print("GateTrace MCP interview demo")
     print("========================")
     _call(runtime, "1. Detect degraded production service", "platform-ops", "platform.health", {"service": "payments-api"})
     _call(runtime, "2. Redact secret from production config", "platform-ops", "platform.read_config", {"service": "payments-api"})
@@ -23,9 +25,19 @@ def run_demo(runtime: MCPGuardRuntime) -> None:
         "4. Blocked rollback without approval",
         "platform-ops",
         "platform.rollback_deployment",
-        {"service": "payments-api", "version": "payments-api@2026.05.2"},
+        {
+            "service": "payments-api",
+            "version": "payments-api@2026.05.2",
+            "actor": "interview-demo",
+            "rollback_plan": ROLLBACK_PLAN,
+        },
     )
-    rollback_args = {"service": "payments-api", "version": "payments-api@2026.05.2"}
+    rollback_args = {
+        "service": "payments-api",
+        "version": "payments-api@2026.05.2",
+        "actor": "interview-demo",
+        "rollback_plan": ROLLBACK_PLAN,
+    }
     approval_token = runtime.policy.issue_approval(
         actor="interview-demo",
         reason="rollback after elevated payments-api 5xx rate",
@@ -41,12 +53,25 @@ def run_demo(runtime: MCPGuardRuntime) -> None:
         "platform.rollback_deployment",
         {**rollback_args, "approval_token": approval_token},
     )
+    _call(
+        runtime,
+        "6. Kubernetes pod restart dry-run",
+        "kubernetes",
+        "kubernetes.restart_pod",
+        {
+            "namespace": "prod",
+            "pod": "payment-service-xyz",
+            "actor": "interview-demo",
+            "rollback_plan": ROLLBACK_PLAN,
+            "dry_run": True,
+        },
+    )
     runtime.policy.set_tool_enabled("platform.health", False)
-    _call(runtime, "6. Kill switch blocks health checks", "platform-ops", "platform.health", {"service": "payments-api"})
+    _call(runtime, "7. Kill switch blocks health checks", "platform-ops", "platform.health", {"service": "payments-api"})
     runtime.policy.set_tool_enabled("platform.health", True)
-    print("\n7. Incident analysis")
+    print("\n8. Incident analysis")
     print(json.dumps(runtime.summarize_recent_events(limit=6), indent=2))
-    print("\n8. Prometheus metrics")
+    print("\n9. Prometheus metrics")
     print(runtime.metrics.render().rstrip())
 
 

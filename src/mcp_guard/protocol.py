@@ -75,25 +75,35 @@ def _write(payload: dict[str, Any]) -> None:
 
 
 class StdioMCPClient:
-    def __init__(self, backend: str) -> None:
+    def __init__(
+        self,
+        backend: str,
+        *,
+        command: list[str] | tuple[str, ...] | None = None,
+        environment: dict[str, str] | None = None,
+        cwd: str | None = None,
+    ) -> None:
         self.backend = backend
         self._lock = threading.Lock()
         self._next_id = 1
+        process_environment = os.environ.copy()
+        process_environment.update(environment or {})
         self._process = subprocess.Popen(
-            [sys.executable, "-m", "mcp_guard.cli", "backend", backend],
+            list(command or [sys.executable, "-m", "mcp_guard.cli", "backend", backend]),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
-            env=os.environ.copy(),
+            env=process_environment,
+            cwd=cwd,
         )
         self.request(
             "initialize",
             {
                 "protocolVersion": STABLE_PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": {"name": "mcp-guard", "version": "0.1.0"},
+                    "clientInfo": {"name": "gatetrace-mcp", "version": "0.2.0"},
             },
         )
         self.notify("notifications/initialized", {})

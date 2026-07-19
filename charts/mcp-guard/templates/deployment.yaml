@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mcp-guard.fullname" . }}
+  labels:
+    {{- include "mcp-guard.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "mcp-guard.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: {{ include "mcp-guard.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "mcp-guard.serviceAccountName" . }}
+      containers:
+        - name: gatetrace-mcp
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: MCP_GUARD_MODE
+              value: real-mcp
+            - name: MCP_GUARD_APPROVAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mcp-guard.fullname" . }}
+                  key: MCP_GUARD_APPROVAL_SECRET
+            - name: MCP_GUARD_HTTP_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mcp-guard.fullname" . }}
+                  key: MCP_GUARD_HTTP_BEARER_TOKEN
+            - name: MCP_GUARD_JWT_HS256_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mcp-guard.fullname" . }}
+                  key: MCP_GUARD_JWT_HS256_SECRET
+            - name: MCP_GUARD_JWT_ISSUER
+              value: {{ .Values.auth.jwtIssuer | quote }}
+            - name: MCP_GUARD_JWT_AUDIENCE
+              value: {{ .Values.auth.jwtAudience | quote }}
+            - name: MCP_GUARD_JWT_REQUIRED_GROUP
+              value: {{ .Values.auth.jwtRequiredGroup | quote }}
+            - name: MCP_GUARD_JWT_JWKS_URL
+              value: {{ .Values.auth.jwtJwksUrl | quote }}
+            - name: MCP_GUARD_REDIS_URL
+              value: {{ .Values.redis.url | quote }}
+            - name: MCP_GUARD_REDIS_REQUIRED
+              value: {{ .Values.redis.required | quote }}
+            - name: MCP_GUARD_TELEMETRY
+              value: {{ .Values.telemetry.mode | quote }}
+            - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+              value: {{ .Values.telemetry.otlpEndpoint | quote }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -12,9 +12,8 @@ COPY scripts ./scripts
 COPY src ./src
 
 RUN python -m pip install --no-cache-dir --upgrade pip \
-    && python -m pip install --no-cache-dir -e .
+    && python -m pip install --no-cache-dir -e '.[mcp,observability,auth,redis]'
 
 EXPOSE 8080
 
-CMD ["python", "-m", "mcp_guard.cli", "dashboard", "--host", "0.0.0.0", "--port", "8080"]
-
+CMD ["./scripts/docker_entrypoint.sh"]

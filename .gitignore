@@ -3,5 +3,13 @@ __pycache__/
 *.egg-info/
 .venv/
 data/
+build/
 .DS_Store
 
+# Terraform local state and provider cache
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+*.auto.tfvars

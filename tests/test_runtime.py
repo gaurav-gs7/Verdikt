@@ -7,6 +7,8 @@ from pathlib import Path
 from mcp_guard.cli import PROJECT_ROOT
 from mcp_guard.runtime import MCPGuardRuntime
 
+ROLLBACK_PLAN = "verify health checks and restore previous known-good release if errors increase"
+
 
 class RuntimeTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -38,7 +40,7 @@ class RuntimeTest(unittest.TestCase):
         rollback = self.runtime.call_tool(
             "platform-ops",
             "platform.rollback_deployment",
-            {"service": "payments-api", "version": "payments-api@2026.05.2"},
+            {"service": "payments-api", "version": "payments-api@2026.05.2", "actor": "gaurav"},
         )
 
         self.assertFalse(sensitive_read.allowed)
@@ -64,10 +66,23 @@ class RuntimeTest(unittest.TestCase):
         self.assertIn("stripe-api=degraded", diagnostic.result["output"])
 
     def test_approved_rollback_and_kill_switch(self) -> None:
+        arguments = {
+            "service": "payments-api",
+            "version": "payments-api@2026.05.2",
+            "actor": "gaurav",
+            "rollback_plan": ROLLBACK_PLAN,
+        }
+        token = self.runtime.policy.issue_approval(
+            actor="gaurav",
+            reason="unit-test approved rollback",
+            server="platform-ops",
+            tool="platform.rollback_deployment",
+            arguments=arguments,
+        )
         rollback = self.runtime.call_tool(
             "platform-ops",
             "platform.rollback_deployment",
-            {"service": "payments-api", "version": "payments-api@2026.05.2", "approved": True},
+            {**arguments, "approval_token": token},
         )
         self.runtime.policy.set_tool_enabled("platform.health", False)
         health = self.runtime.call_tool("platform-ops", "platform.health", {"service": "payments-api"})
@@ -78,7 +93,12 @@ class RuntimeTest(unittest.TestCase):
         self.assertIn("kill switch", health.reason)
 
     def test_signed_approval_token_allows_bound_rollback(self) -> None:
-        arguments = {"service": "payments-api", "version": "payments-api@2026.05.2"}
+        arguments = {
+            "service": "payments-api",
+            "version": "payments-api@2026.05.2",
+            "actor": "gaurav",
+            "rollback_plan": ROLLBACK_PLAN,
+        }
         token = self.runtime.policy.issue_approval(
             actor="gaurav",
             reason="rollback after elevated 5xx rate",
@@ -99,7 +119,12 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(result.risk_level, "critical")
 
     def test_approval_token_is_bound_to_arguments_and_expiry(self) -> None:
-        arguments = {"service": "payments-api", "version": "payments-api@2026.05.2"}
+        arguments = {
+            "service": "payments-api",
+            "version": "payments-api@2026.05.2",
+            "actor": "gaurav",
+            "rollback_plan": ROLLBACK_PLAN,
+        }
         token = self.runtime.policy.issue_approval(
             actor="gaurav",
             reason="rollback after elevated 5xx rate",
@@ -120,7 +145,7 @@ class RuntimeTest(unittest.TestCase):
         changed_arguments = self.runtime.call_tool(
             "platform-ops",
             "platform.rollback_deployment",
-            {"service": "payments-api", "version": "payments-api@2026.04.9", "approval_token": token},
+            {**arguments, "version": "payments-api@2026.04.9", "approval_token": token},
         )
         expired_result = self.runtime.call_tool(
             "platform-ops",
@@ -157,16 +182,42 @@ class RuntimeTest(unittest.TestCase):
         )
 
         for index in range(3):
+            arguments = {
+                "service": "payments-api",
+                "version": f"payments-api@2026.05.{index}",
+                "actor": "gaurav",
+                "rollback_plan": ROLLBACK_PLAN,
+            }
+            token = self.runtime.policy.issue_approval(
+                actor="gaurav",
+                reason="rate-limit test",
+                server="platform-ops",
+                tool="platform.rollback_deployment",
+                arguments=arguments,
+            )
             rollback = self.runtime.call_tool(
                 "platform-ops",
                 "platform.rollback_deployment",
-                {"service": "payments-api", "version": f"payments-api@2026.05.{index}", "approved": True},
+                {**arguments, "approval_token": token},
             )
             self.assertTrue(rollback.allowed)
+        final_arguments = {
+            "service": "payments-api",
+            "version": "payments-api@2026.04.9",
+            "actor": "gaurav",
+            "rollback_plan": ROLLBACK_PLAN,
+        }
+        final_token = self.runtime.policy.issue_approval(
+            actor="gaurav",
+            reason="rate-limit test final call",
+            server="platform-ops",
+            tool="platform.rollback_deployment",
+            arguments=final_arguments,
+        )
         rate_limited_rollback = self.runtime.call_tool(
             "platform-ops",
             "platform.rollback_deployment",
-            {"service": "payments-api", "version": "payments-api@2026.04.9", "approved": True},
+            {**final_arguments, "approval_token": final_token},
         )
 
         self.assertFalse(rate_limited_health.allowed)

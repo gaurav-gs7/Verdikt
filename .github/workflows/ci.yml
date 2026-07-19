@@ -12,8 +12,43 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install project with MCP support
+        run: python -m pip install -e '.[mcp]'
       - name: Run tests
         run: PYTHONPATH=src python -m unittest discover -s tests -v
       - name: Run adversarial evals
         run: PYTHONPATH=src python -m mcp_guard.cli eval
+      - name: Run failure-mode tests
+        run: PYTHONPATH=src python -m mcp_guard.failure_tests
 
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7"
+      - name: Package serverless Lambda artifact
+        run: ./scripts/aws/package_serverless.sh
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive infra/aws/terraform infra/aws/serverless
+      - name: Validate EC2 real MCP Terraform
+        run: |
+          terraform -chdir=infra/aws/terraform init -backend=false
+          terraform -chdir=infra/aws/terraform validate
+      - name: Validate serverless Terraform
+        run: |
+          terraform -chdir=infra/aws/serverless init -backend=false
+          terraform -chdir=infra/aws/serverless validate
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build production MCP container
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: gatetrace-mcp:ci

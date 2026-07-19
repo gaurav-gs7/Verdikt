@@ -1,5 +1,5 @@
 {
-  "allow_demo_boolean_approval": true,
+  "allow_demo_boolean_approval": false,
   "blocked_argument_patterns": [
     "(^|/)\\.ssh(/|$)",
     "(^|/)\\.aws(/|$)",
@@ -9,6 +9,17 @@
     "\\bcurl\\b",
     "\\bwget\\b"
   ],
+  "forbidden_argument_keys": [
+    "access_token",
+    "authorization",
+    "bearer_token",
+    "oauth_token",
+    "upstream_token"
+  ],
+  "inbound_content_inspection": {
+    "mode": "fail_closed",
+    "max_scan_bytes": 262144
+  },
   "redacted_key_patterns": [
     "api[_-]?key",
     "authorization",
@@ -23,13 +34,44 @@
   ],
   "approval_required": [
     "platform.restart_deployment",
-    "platform.rollback_deployment"
+    "platform.rollback_deployment",
+    "kubernetes.restart_pod"
+  ],
+  "actor_permissions": {
+    "gaurav": ["*"],
+    "interview-demo": ["*"],
+    "sre-oncall": ["platform.*", "kubernetes.*", "incident.*"],
+    "readonly": ["platform.health", "platform.read_config", "platform.read_logs", "incident.timeline"],
+    "anonymous": ["platform.health", "platform.read_config", "platform.read_logs", "platform.run_diagnostic", "incident.*", "kubernetes.get_pod", "kubernetes.rollout_status"]
+  },
+  "actor_required_tools": [
+    "platform.restart_deployment",
+    "platform.rollback_deployment",
+    "kubernetes.restart_pod"
+  ],
+  "production_environments": ["prod", "production"],
+  "rollback_plan_required": [
+    "platform.restart_deployment",
+    "platform.rollback_deployment",
+    "kubernetes.restart_pod"
+  ],
+  "dry_run_supported": [
+    "platform.restart_deployment",
+    "platform.rollback_deployment",
+    "kubernetes.restart_pod"
+  ],
+  "shadow_mode_supported": [
+    "platform.restart_deployment",
+    "platform.rollback_deployment",
+    "kubernetes.restart_pod"
   ],
   "rate_limits_per_minute": {
     "default": 30,
     "platform.health": 10,
-    "platform.rollback_deployment": 3
+    "platform.rollback_deployment": 3,
+    "kubernetes.restart_pod": 3
   },
+  "global_rate_limit_per_minute": 300,
   "allowed_tools": {
     "platform-ops": [
       "platform.health",
@@ -38,6 +80,11 @@
       "platform.run_diagnostic",
       "platform.restart_deployment",
       "platform.rollback_deployment"
+    ],
+    "kubernetes": [
+      "kubernetes.get_pod",
+      "kubernetes.restart_pod",
+      "kubernetes.rollout_status"
     ],
     "incident": [
       "incident.create",

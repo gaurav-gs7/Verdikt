@@ -3,23 +3,35 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mcp-guard"
-version = "0.1.0"
-description = "A lightweight runtime firewall and reliability layer for MCP servers."
+name = "gatetrace-mcp"
+version = "0.2.0"
+description = "A deterministic security and reliability control plane for MCP tool execution."
 readme = "README.md"
 requires-python = ">=3.11"
-authors = [{ name = "MCP-Guard" }]
+authors = [{ name = "Gaurav GS" }]
 license = { text = "Apache-2.0" }
 
 [project.scripts]
+gatetrace-mcp = "mcp_guard.cli:main"
+# Compatibility alias retained for existing local configurations.
 mcp-guard = "mcp_guard.cli:main"
 
 [project.optional-dependencies]
+mcp = [
+  "mcp>=1.20,<2",
+  "uvicorn[standard]>=0.30,<1",
+]
 observability = [
   "openinference-semantic-conventions>=0.1.30,<0.2",
   "opentelemetry-api>=1.39,<2",
   "opentelemetry-sdk>=1.39,<2",
   "opentelemetry-exporter-otlp-proto-http>=1.39,<2",
+]
+auth = [
+  "PyJWT[crypto]>=2.10,<3",
+]
+redis = [
+  "redis>=5,<7",
 ]
 
 [tool.setuptools]

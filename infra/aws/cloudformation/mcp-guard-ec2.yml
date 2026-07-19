@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Free-tier friendly GateTrace MCP deployment on one EC2 instance.
+
+Parameters:
+  AppName:
+    Type: String
+    Default: gatetrace-mcp
+  ImageUri:
+    Type: String
+    Description: Full ECR image URI, for example 123456789012.dkr.ecr.us-east-1.amazonaws.com/gatetrace-mcp:latest
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t2.micro
+      - t3.micro
+      - t4g.micro
+    Description: Use a Free Tier eligible type for your account. Match the AMI architecture to the instance family.
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+    Description: Amazon Linux 2023 AMI. Use the arm64 SSM parameter if you choose t4g.micro.
+  AppPort:
+    Type: Number
+    Default: 8080
+  AllowedCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: Restrict this to your public IP /32 for safer demos.
+  ContainerMode:
+    Type: String
+    Default: real-mcp
+    AllowedValues:
+      - real-mcp
+      - dashboard
+    Description: Run the production MCP Streamable HTTP server or the dashboard.
+  HttpBearerToken:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Optional bearer token for the real MCP HTTP server.
+  ApprovalSecret:
+    Type: String
+    Default: local-dev-approval-secret-change-me
+    NoEcho: true
+    Description: HMAC secret for GateTrace MCP signed approval tokens.
+
+Resources:
+  HttpBearerSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Bearer token for remote MCP Streamable HTTP callers.
+      SecretString: !Ref HttpBearerToken
+
+  ApprovalSecretValue:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: HMAC secret for GateTrace MCP signed approval tokens.
+      SecretString: !Ref ApprovalSecret
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AppName}-ec2-role-${AWS::Region}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: ecr-pull
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/*
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref HttpBearerSecret
+                  - !Ref ApprovalSecretValue
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref InstanceRole
+
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub Allow HTTP access to ${AppName}
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref AppPort
+          ToPort: !Ref AppPort
+          CidrIp: !Ref AllowedCidr
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${AppName}-sg
+
+  AppInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      SecurityGroupIds:
+        - !Ref AppSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 8
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+      Tags:
+        - Key: Name
+          Value: !Ref AppName
+        - Key: Project
+          Value: GateTrace MCP
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+
+          dnf update -y
+          dnf install -y docker awscli
+          systemctl enable --now docker
+
+          mkdir -p /opt/gatetrace-mcp/data
+          aws ecr get-login-password --region ${AWS::Region} \
+            | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
+
+          docker pull ${ImageUri}
+          docker rm -f gatetrace-mcp || true
+
+          HTTP_BEARER_TOKEN="$(aws secretsmanager get-secret-value --region ${AWS::Region} --secret-id ${HttpBearerSecret} --query SecretString --output text)"
+          APPROVAL_SECRET="$(aws secretsmanager get-secret-value --region ${AWS::Region} --secret-id ${ApprovalSecretValue} --query SecretString --output text)"
+
+          docker run -d \
+            --name gatetrace-mcp \
+            --restart unless-stopped \
+            -p ${AppPort}:8080 \
+            -v /opt/gatetrace-mcp/data:/app/data \
+            -e MCP_GUARD_MODE=${ContainerMode} \
+            -e MCP_GUARD_TELEMETRY=disabled \
+            -e MCP_GUARD_HTTP_BEARER_TOKEN="$HTTP_BEARER_TOKEN" \
+            -e MCP_GUARD_APPROVAL_SECRET="$APPROVAL_SECRET" \
+            ${ImageUri}
+
+Outputs:
+  InstanceId:
+    Description: EC2 instance ID
+    Value: !Ref AppInstance
+  PublicDnsName:
+    Description: Public DNS name
+    Value: !GetAtt AppInstance.PublicDnsName
+  DashboardUrl:
+    Description: GateTrace MCP service URL. In real-mcp mode, use /mcp for MCP clients and /healthz for health checks.
+    Value: !Sub http://${AppInstance.PublicDnsName}:${AppPort}
+  McpEndpointUrl:
+    Description: Official MCP Streamable HTTP endpoint
+    Value: !Sub http://${AppInstance.PublicDnsName}:${AppPort}/mcp
+  SsmConnectCommand:
+    Description: Session Manager command
+    Value: !Sub aws ssm start-session --target ${AppInstance}

@@ -10,6 +10,7 @@ from .demo import run_demo
 from .evals import print_evals
 from .gateway import serve_gateway
 from .http_app import serve_dashboard
+from .real_mcp import serve_real_mcp
 from .runtime import MCPGuardRuntime
 
 
@@ -17,18 +18,24 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description="MCP-Guard runtime firewall")
+    result = argparse.ArgumentParser(description="GateTrace MCP runtime firewall")
     result.add_argument("--policy", type=Path, default=PROJECT_ROOT / "config" / "policies.yaml")
     result.add_argument("--audit-db", type=Path, default=PROJECT_ROOT / "data" / "mcp_guard.db")
     subparsers = result.add_subparsers(dest="command", required=True)
     demo = subparsers.add_parser("demo", help="run the interview demo")
     _add_runtime_options(demo)
-    gateway = subparsers.add_parser("serve-mcp", help="expose MCP-Guard over JSON-RPC stdio")
+    gateway = subparsers.add_parser("serve-mcp", help="expose GateTrace MCP over JSON-RPC stdio")
     _add_runtime_options(gateway)
     dashboard = subparsers.add_parser("dashboard", help="run the local HTTP dashboard")
     _add_runtime_options(dashboard)
     dashboard.add_argument("--host", default="127.0.0.1")
     dashboard.add_argument("--port", default=8080, type=int)
+    real_mcp = subparsers.add_parser("serve-real-mcp", help="run the official MCP Streamable HTTP server")
+    _add_runtime_options(real_mcp)
+    real_mcp.add_argument("--host", default="127.0.0.1")
+    real_mcp.add_argument("--port", default=8080, type=int)
+    real_mcp.add_argument("--mcp-path", default="/mcp")
+    real_mcp.add_argument("--log-level", default="info")
     approval = subparsers.add_parser("issue-approval", help="issue a signed approval token")
     _add_runtime_options(approval)
     approval.add_argument("--actor", required=True)
@@ -40,7 +47,7 @@ def parser() -> argparse.ArgumentParser:
     evals = subparsers.add_parser("eval", help="run adversarial safety evals")
     _add_runtime_options(evals)
     backend = subparsers.add_parser("backend", help=argparse.SUPPRESS)
-    backend.add_argument("name", choices=["platform-ops", "incident"])
+    backend.add_argument("name", choices=["platform-ops", "incident", "kubernetes"])
     return result
 
 
@@ -56,6 +63,9 @@ def main() -> None:
         return
     if args.command == "eval":
         raise SystemExit(print_evals(args.policy))
+    if args.command == "serve-real-mcp":
+        serve_real_mcp(args)
+        return
     runtime = MCPGuardRuntime(args.policy, args.audit_db)
     if args.command == "demo":
         try:

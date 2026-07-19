@@ -1,15 +1,22 @@
 # Production Roadmap
 
+## Implemented Baseline
+
+- JWT/JWKS resource-server validation with audience and scope checks.
+- Identity-bound policy evaluation and token-passthrough denial.
+- Slack signed-callback approval with exact-argument token binding.
+- Redis and DynamoDB distributed rate limits.
+- Tool metadata inspection, pinning, shadow detection, and result quarantine.
+- Hash-chained local audit plus JSONL/S3 shipping and signed DynamoDB events.
+
 ## Priority 1: Identity And Approval
 
-- Replace demo boolean approvals with signed approval tokens everywhere.
-- Add OIDC JWT validation.
-- Bind approvals to actor, environment, service, tool, arguments, and expiry.
 - Add two-person approval for critical-risk actions.
+- Test against a deployed Cognito or other OAuth 2.1 authorization server with per-client consent and PKCE.
 
 ## Priority 2: Real AIOps Integrations
 
-- Kubernetes MCP server for deployments, pods, events, rollouts, and restarts.
+- Expand the guarded Kubernetes adapter from pod status/restart/rollout status into events, deployment history, and namespace inventory.
 - Prometheus MCP server for SLO burn rate and error budget checks.
 - Loki or Datadog MCP server for logs.
 - PagerDuty or Opsgenie MCP server for incidents.
@@ -24,11 +31,10 @@
 
 ## Priority 4: Distributed Runtime
 
-- Postgres audit store.
-- Redis distributed rate limits.
-- Durable kill switches.
+- Provision S3 Object Lock or another immutable audit destination.
+- Durable kill switches across all runtime modes.
 - Idempotency keys.
-- HA dashboard/API deployment.
+- ECS/Fargate or multi-AZ deployment for non-free-tier production hosting.
 
 ## Priority 5: Supply Chain
 
@@ -36,12 +42,11 @@
 - Dependency scanning.
 - Signed container images.
 - SLSA provenance.
-- Release workflow.
+- Release workflow with GitHub Actions environment approvals.
 
 ## Priority 6: Agent Safety Evals
 
-- Expand the adversarial eval corpus.
-- Add prompt-injection fixtures from logs and incident comments.
+- Expand MCP-38 covered controls beyond the current 12 categories.
+- Add encoded, multilingual, split-field, and low-and-slow injection fixtures.
 - Track pass/fail history in CI.
 - Fail builds on policy regressions.
-

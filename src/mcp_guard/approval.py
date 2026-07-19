@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 
-TOKEN_VERSION = "mcp-guard-approval-v1"
+TOKEN_VERSION = "gatetrace-approval-v1"
 DEFAULT_DEV_SECRET = "local-dev-approval-secret-change-me"
 
 
@@ -44,13 +44,32 @@ class ApprovalAuthority:
         arguments: dict[str, Any],
         ttl_seconds: int = 300,
     ) -> str:
+        return self.issue_digest(
+            actor=actor,
+            reason=reason,
+            server=server,
+            tool=tool,
+            arguments_hash=arguments_hash(arguments),
+            ttl_seconds=ttl_seconds,
+        )
+
+    def issue_digest(
+        self,
+        *,
+        actor: str,
+        reason: str,
+        server: str,
+        tool: str,
+        arguments_hash: str,
+        ttl_seconds: int = 300,
+    ) -> str:
         claims = {
             "version": TOKEN_VERSION,
             "actor": actor,
             "reason": reason,
             "server": server,
             "tool": tool,
-            "arguments_hash": arguments_hash(arguments),
+            "arguments_hash": arguments_hash,
             "expires_at": int(time.time()) + ttl_seconds,
         }
         payload = _b64(json.dumps(claims, sort_keys=True, separators=(",", ":")).encode())
@@ -110,4 +129,3 @@ def _b64(value: bytes) -> str:
 
 def _unb64(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
-

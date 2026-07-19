@@ -1,0 +1,21 @@
+{
+  "servers": {
+    "community-filesystem": {
+      "command": [
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/tmp/mcp-guard-sandbox"
+      ]
+    },
+    "authenticated-example": {
+      "command": ["python3", "/opt/company-mcp/server.py"],
+      "env": {
+        "UPSTREAM_API_TOKEN": {
+          "from_aws_secret": "mcp-guard/upstreams/company",
+          "json_key": "api_token"
+        }
+      }
+    }
+  }
+}

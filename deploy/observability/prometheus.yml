@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: gatetrace-mcp
+    metrics_path: /metrics
+    bearer_token: local-dev-token
+    static_configs:
+      - targets: ["gatetrace-mcp:8080"]

@@ -46,7 +46,7 @@ class TraceSpan:
 
 
 class Telemetry:
-    """Optional OpenInference-compatible tracing for MCP-Guard."""
+    """Optional OpenInference-compatible tracing for GateTrace MCP."""
 
     def __init__(self, mode: str | None = None) -> None:
         self.mode = (mode or os.getenv("MCP_GUARD_TELEMETRY", "disabled")).lower()
@@ -67,7 +67,7 @@ class Telemetry:
                 "Install them with: python3 -m pip install -e '.[observability]'"
             ) from exc
 
-        provider = TracerProvider(resource=Resource.create({"service.name": "mcp-guard"}))
+        provider = TracerProvider(resource=Resource.create({"service.name": "gatetrace-mcp"}))
         if self.mode == "console":
             exporter = ConsoleSpanExporter()
         else:

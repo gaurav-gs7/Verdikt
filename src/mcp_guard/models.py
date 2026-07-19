@@ -23,6 +23,7 @@ class PolicyDecision:
     allowed: bool
     reason: str
     rule: str
+    action: str = "ALLOW"
     risk_score: int = 0
     risk_level: str = "low"
     evidence: list[str] = field(default_factory=list)
@@ -39,8 +40,11 @@ class ToolCallResult:
     tool: str
     reason: str
     result: Any = None
+    rule: str = ""
+    action: str = "ALLOW"
     risk_score: int = 0
     risk_level: str = "low"
+    evidence: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
