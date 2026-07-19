@@ -10,6 +10,7 @@ from .demo import run_demo
 from .evals import print_evals
 from .gateway import serve_gateway
 from .http_app import serve_dashboard
+from .interop import print_interop_profiles
 from .real_mcp import serve_real_mcp
 from .runtime import MCPGuardRuntime
 
@@ -46,6 +47,18 @@ def parser() -> argparse.ArgumentParser:
     approval.add_argument("--ttl-seconds", type=int, default=300)
     evals = subparsers.add_parser("eval", help="run adversarial safety evals")
     _add_runtime_options(evals)
+    interop = subparsers.add_parser(
+        "interop",
+        help="verify GateTrace against pinned independently built MCP servers",
+    )
+    interop.add_argument("--policy", type=Path, default=argparse.SUPPRESS)
+    interop.add_argument(
+        "--profiles",
+        type=Path,
+        default=PROJECT_ROOT / "config" / "interop_profiles.json",
+    )
+    interop.add_argument("--profile", action="append", dest="profiles_selected")
+    interop.add_argument("--output", type=Path)
     backend = subparsers.add_parser("backend", help=argparse.SUPPRESS)
     backend.add_argument("name", choices=["platform-ops", "incident", "kubernetes"])
     return result
@@ -63,6 +76,15 @@ def main() -> None:
         return
     if args.command == "eval":
         raise SystemExit(print_evals(args.policy))
+    if args.command == "interop":
+        raise SystemExit(
+            print_interop_profiles(
+                args.profiles,
+                args.policy,
+                args.profiles_selected,
+                args.output,
+            )
+        )
     if args.command == "serve-real-mcp":
         serve_real_mcp(args)
         return

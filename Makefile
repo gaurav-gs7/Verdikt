@@ -1,4 +1,4 @@
-.PHONY: test demo eval failure-test dashboard real-mcp trace docker-build observability-up observability-down helm-template aws-build-push aws-deploy aws-delete terraform-deploy terraform-destroy terraform-fmt serverless-package serverless-deploy serverless-destroy serverless-fmt
+.PHONY: test demo eval failure-test interop-community dashboard real-mcp trace docker-build observability-up observability-down helm-template aws-build-push aws-deploy aws-delete terraform-deploy terraform-destroy terraform-fmt serverless-package serverless-deploy serverless-destroy serverless-fmt
 
 test:
 	PYTHONPATH=src ./scripts/python.sh -m unittest discover -s tests -v
@@ -11,6 +11,9 @@ eval:
 
 failure-test:
 	./scripts/run_failure_tests.sh
+
+interop-community:
+	./scripts/run_community_interop.sh --output build/community-interop.json
 
 dashboard:
 	./scripts/run_dashboard.sh

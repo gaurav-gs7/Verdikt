@@ -49,14 +49,14 @@ def load_upstream_servers(path: str | Path | None = None) -> list[UpstreamServer
             UpstreamServer(
                 name=name,
                 command=tuple(command),
-                environment=_resolve_environment(name, raw.get("env", {})),
+                environment=resolve_operator_environment(name, raw.get("env", {})),
                 cwd=cwd,
             )
         )
     return result
 
 
-def _resolve_environment(server: str, configured: Any) -> dict[str, str]:
+def resolve_operator_environment(server: str, configured: Any) -> dict[str, str]:
     if not isinstance(configured, dict):
         raise UpstreamConfigError(f"upstream {server!r} env must be an object")
     resolved: dict[str, str] = {}

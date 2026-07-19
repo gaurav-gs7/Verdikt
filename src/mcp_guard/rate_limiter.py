@@ -42,6 +42,10 @@ class RedisRateLimiter:
             raise RuntimeError("Redis rate limiting requires optional redis dependency") from exc
         self._client = redis.Redis.from_url(redis_url, decode_responses=True)
         self._prefix = prefix
+        try:
+            self._client.ping()
+        except redis.RedisError as exc:
+            raise RuntimeError("Redis rate limiting backend is unavailable") from exc
 
     def allow(self, key: str, limit: int, window_seconds: int) -> bool:
         bucket = int(time.time() // window_seconds)

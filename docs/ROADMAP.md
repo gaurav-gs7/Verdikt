@@ -7,6 +7,8 @@
 - Slack signed-callback approval with exact-argument token binding.
 - Redis and DynamoDB distributed rate limits.
 - Tool metadata inspection, pinning, shadow detection, and result quarantine.
+- Versioned official Filesystem, Memory, and GitHub MCP interoperability profiles.
+- External subprocess environment isolation with explicit credential brokering.
 - Hash-chained local audit plus JSONL/S3 shipping and signed DynamoDB events.
 
 ## Priority 1: Identity And Approval

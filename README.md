@@ -13,6 +13,8 @@ GateTrace MCP demonstrates:
 - MCP gateway proxying over JSON-RPC stdio
 - Official MCP SDK Streamable HTTP server for production-facing clients
 - Operator-configured proxying to independently built stdio MCP servers
+- Versioned interoperability harness for official Filesystem, Memory, and GitHub MCP servers
+- Minimal subprocess environments that expose only explicitly brokered upstream credentials
 - Recursive tool-description and JSON Schema inspection before trust
 - SHA-256 tool-definition pinning and fail-closed rug-pull detection
 - Deterministic direct and indirect prompt-injection inspection
@@ -21,6 +23,7 @@ GateTrace MCP demonstrates:
 - JWT/OIDC resource-server authentication with issuer, audience, group, and scope validation
 - Authenticated-subject binding that rejects caller actor spoofing
 - OAuth protected-resource metadata and caller-token passthrough denial
+- Scoped OAuth challenges and exact HTTP Origin validation
 - HMAC-signed approval tokens for restart and rollback operations
 - Slack button approvals with signed callbacks, approver allowlists, deduplication, and replay protection
 - Rollback-plan enforcement before production-impacting actions execute
@@ -86,6 +89,7 @@ make test
 make demo
 make eval
 make failure-test
+make interop-community
 make trace
 make observability-up
 make helm-template
@@ -125,7 +129,7 @@ For an MCP client configuration, use:
 
 Set `MCP_GUARD_UPSTREAM_CONFIG` to a JSON file using the shape in [`config/upstreams.example.json`](config/upstreams.example.json). Commands are executed directly without a shell. Sensitive upstream credentials should use `from_env` or `from_aws_secret`; caller-supplied OAuth tokens are denied recursively by policy.
 
-The test suite launches [`tests/fixtures/external_mcp_server.py`](tests/fixtures/external_mcp_server.py) as an independent process and proves three paths: normal proxying, a GitHub-issue-style injected result being quarantined, and changed tool metadata being blocked before execution.
+The test suite launches [`tests/fixtures/external_mcp_server.py`](tests/fixtures/external_mcp_server.py) as an independent process and proves normal and text-only responses, paginated discovery, server-initiated requests, environment isolation, injected-result quarantine, and changed metadata blocking. The versioned [community interoperability harness](docs/COMMUNITY_INTEROP.md) separately targets the official MCP Filesystem and Memory servers plus GitHub's official read-only server.
 
 ## Optional Groq Integration
 
@@ -192,7 +196,7 @@ Run the adversarial eval harness:
 ./scripts/run_evals.sh
 ```
 
-The evals cover unsafe diagnostics, direct prompt injection, token passthrough, unapproved destructive actions, unknown tools, safe diagnostics, health checks, and audit redaction. The report also validates all 38 entries in [`config/mcp38_coverage.json`](config/mcp38_coverage.json): currently 12 covered, 20 partial, and 6 explicitly not covered under the definition stored in that file.
+The evals cover unsafe diagnostics, direct prompt injection, token passthrough, unapproved destructive actions, unknown tools, safe diagnostics, health checks, and audit redaction. The report also validates all 38 entries in [`config/mcp38_coverage.json`](config/mcp38_coverage.json): currently 12 covered, 21 partial, and 5 explicitly not covered under the definition stored in that file.
 
 Run the failure-mode harness:
 
@@ -386,11 +390,11 @@ Implemented and tested controls directly address:
 - Fast containment of a compromised tool or MCP server.
 - Audit-record mutation and loss of local-only evidence through optional central shipping.
 
-Explicit gaps remain: GateTrace MCP is an OAuth resource server, not an authorization server; PKCE and per-client consent belong in the chosen IdP/client flow. It does not yet provide multi-tenant isolation, semantic DLP for privacy inference, DNS-rebinding protection, cryptographically signed policy bundles, OS-level upstream sandboxes, or complete MCP resource/prompt proxying. The coverage matrix treats these as partial or not covered rather than presenting the project as universally production complete.
+Explicit gaps remain: GateTrace MCP is an OAuth resource server, not an authorization server; PKCE and per-client consent belong in the chosen IdP/client flow. It does not yet provide multi-tenant isolation, semantic DLP for privacy inference, complete Host-header and deployment-edge DNS-rebinding defenses beyond Origin validation, cryptographically signed policy bundles, OS-level upstream sandboxes, or complete MCP resource/prompt proxying. The coverage matrix treats these as partial or not covered rather than presenting the project as universally production complete.
 
 ## Design Notes
 
-The short design write-up is in [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md), the production roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md), the AWS learning plan is in [docs/AWS_AIOPS_SKILLS.md](docs/AWS_AIOPS_SKILLS.md), and the production operations docs are in [docs/SLO.md](docs/SLO.md), [docs/RUNBOOKS.md](docs/RUNBOOKS.md), [docs/IAM_REVIEW.md](docs/IAM_REVIEW.md), [docs/TRACING.md](docs/TRACING.md), [docs/FAILURE_TESTING.md](docs/FAILURE_TESTING.md), [docs/CICD.md](docs/CICD.md), and [docs/PRODUCTION_ENHANCEMENTS.md](docs/PRODUCTION_ENHANCEMENTS.md).
+The short design write-up is in [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md), the production roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md), the AWS learning plan is in [docs/AWS_AIOPS_SKILLS.md](docs/AWS_AIOPS_SKILLS.md), and the production operations docs are in [docs/SLO.md](docs/SLO.md), [docs/RUNBOOKS.md](docs/RUNBOOKS.md), [docs/IAM_REVIEW.md](docs/IAM_REVIEW.md), [docs/TRACING.md](docs/TRACING.md), [docs/FAILURE_TESTING.md](docs/FAILURE_TESTING.md), [docs/CICD.md](docs/CICD.md), [docs/COMMUNITY_INTEROP.md](docs/COMMUNITY_INTEROP.md), and [docs/PRODUCTION_ENHANCEMENTS.md](docs/PRODUCTION_ENHANCEMENTS.md).
 
 ## License
 

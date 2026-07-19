@@ -24,7 +24,7 @@ from .request_context import authenticated_subject
 from .slack_approval import SlackApprovalWorkflow
 from .telemetry import Telemetry
 from .tool_integrity import ToolIntegrityError, ToolIntegrityStore, verify_unique_tool_names
-from .protocol import StdioMCPClient
+from .protocol import StdioMCPClient, is_mcp_tool_error
 from .upstreams import load_upstream_servers
 
 
@@ -72,6 +72,7 @@ class GuardedOpsRuntime:
                 command=upstream.command,
                 environment=upstream.environment,
                 cwd=upstream.cwd,
+                inherit_environment=False,
             )
         self._circuits: dict[tuple[str, str], CircuitState] = {}
         self._circuit_failure_threshold = circuit_failure_threshold
@@ -166,6 +167,12 @@ class GuardedOpsRuntime:
                                 rule = "inbound_prompt_injection"
                                 reason = "tool output was quarantined by deterministic inbound content inspection"
                                 result = quarantine_result(inspection)
+                                self._record_failure(server, tool, reason)
+                            elif is_mcp_tool_error(raw_result):
+                                allowed = False
+                                rule = "upstream_error"
+                                reason = "upstream MCP tool reported an execution error"
+                                result = self.policy.redact(raw_result)
                                 self._record_failure(server, tool, reason)
                             else:
                                 result = self.policy.redact(raw_result)

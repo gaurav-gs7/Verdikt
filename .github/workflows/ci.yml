@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install project with MCP support
-        run: python -m pip install -e '.[mcp]'
+        run: python -m pip install -e '.[mcp,auth]'
       - name: Run tests
         run: PYTHONPATH=src python -m unittest discover -s tests -v
       - name: Run adversarial evals
@@ -50,5 +50,29 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          load: true
           push: false
           tags: gatetrace-mcp:ci
+      - name: Verify production runtime dependencies
+        run: >-
+          docker run --rm --entrypoint python gatetrace-mcp:ci -c
+          "import boto3, jwt, mcp, openinference.semconv, opentelemetry, redis"
+
+  community-interop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install GateTrace MCP
+        run: python -m pip install -e .
+      - name: Verify pinned official MCP servers
+        run: python -m mcp_guard.cli interop --output build/community-interop.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: community-mcp-interoperability
+          path: build/community-interop.json

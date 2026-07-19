@@ -74,16 +74,15 @@ def serve_real_mcp(args: argparse.Namespace) -> None:
     register_tools(mcp, runtime)
     app = mcp.streamable_http_app()
 
-    if authenticator.config.enabled:
-        app.add_middleware(
-            _AuthMiddleware,
-            authenticator=authenticator,
-            exempt_paths={
-                "/healthz",
-                "/.well-known/oauth-protected-resource",
-                "/integrations/slack/actions",
-            },
-        )
+    app.add_middleware(
+        _AuthMiddleware,
+        authenticator=authenticator,
+        exempt_paths={
+            "/healthz",
+            "/.well-known/oauth-protected-resource",
+            "/integrations/slack/actions",
+        },
+    )
 
     async def health(_: Request) -> JSONResponse:
         return JSONResponse(
@@ -129,18 +128,24 @@ class _AuthMiddleware:
             await self.app(scope, receive, send)
             return
         headers = {key.decode().lower(): value.decode() for key, value in scope.get("headers", [])}
+        origin = headers.get("origin")
+        if origin is not None and not self.authenticator.config.origin_allowed(origin):
+            from starlette.responses import JSONResponse
+
+            response = JSONResponse({"error": "invalid_origin"}, status_code=403)
+            await response(scope, receive, send)
+            return
         try:
             auth_result = self.authenticator.authenticate(headers.get("authorization", ""))
         except AuthError:
             from starlette.responses import JSONResponse
 
-            metadata_url = self.authenticator.config.resource_uri.rsplit("/mcp", 1)[0]
-            metadata_url += "/.well-known/oauth-protected-resource"
+            metadata_url = self.authenticator.config.protected_resource_metadata_url()
             response = JSONResponse(
                 {"error": "invalid_token"},
                 status_code=401,
                 headers={
-                    "WWW-Authenticate": f'Bearer resource_metadata="{metadata_url}"',
+                    "WWW-Authenticate": self.authenticator.config.bearer_challenge(metadata_url),
                 },
             )
             await response(scope, receive, send)

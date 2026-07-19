@@ -17,6 +17,19 @@ class MCPProtocolError(RuntimeError):
 
 ToolHandler = Callable[[str, dict[str, Any]], Any]
 STABLE_PROTOCOL_VERSION = "2025-11-25"
+MCP_ERROR_MARKER = "_gatetrace_mcp_tool_error"
+SAFE_ENVIRONMENT_KEYS = (
+    "PATH",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+    "LANG",
+    "LC_ALL",
+    "SYSTEMROOT",
+    "WINDIR",
+    "PATHEXT",
+    "COMSPEC",
+)
 
 
 def serve_stdio(name: str, tools: list[Tool], handler: ToolHandler) -> None:
@@ -82,11 +95,18 @@ class StdioMCPClient:
         command: list[str] | tuple[str, ...] | None = None,
         environment: dict[str, str] | None = None,
         cwd: str | None = None,
+        inherit_environment: bool | None = None,
     ) -> None:
         self.backend = backend
         self._lock = threading.Lock()
         self._next_id = 1
-        process_environment = os.environ.copy()
+        if inherit_environment is None:
+            inherit_environment = command is None
+        process_environment = (
+            os.environ.copy()
+            if inherit_environment
+            else {key: os.environ[key] for key in SAFE_ENVIRONMENT_KEYS if key in os.environ}
+        )
         process_environment.update(environment or {})
         self._process = subprocess.Popen(
             list(command or [sys.executable, "-m", "mcp_guard.cli", "backend", backend]),
@@ -103,7 +123,7 @@ class StdioMCPClient:
             {
                 "protocolVersion": STABLE_PROTOCOL_VERSION,
                 "capabilities": {},
-                    "clientInfo": {"name": "gatetrace-mcp", "version": "0.2.0"},
+                "clientInfo": {"name": "gatetrace-mcp", "version": "0.2.0"},
             },
         )
         self.notify("notifications/initialized", {})
@@ -125,22 +145,55 @@ class StdioMCPClient:
                     raise MCPProtocolError(f"MCP backend {self.backend!r} stopped: {error}")
                 response = json.loads(response_line)
                 if response.get("id") != request_id:
+                    if "id" in response and "method" in response:
+                        self._handle_server_request(response)
                     continue
                 if "error" in response:
                     raise MCPProtocolError(response["error"]["message"])
-                return response["result"]
+                result = response.get("result")
+                if not isinstance(result, dict):
+                    raise MCPProtocolError(
+                        f"MCP backend {self.backend!r} returned a malformed {method!r} result"
+                    )
+                return result
 
     def notify(self, method: str, params: dict[str, Any]) -> None:
         with self._lock:
             self._send({"jsonrpc": "2.0", "method": method, "params": params})
 
     def list_tools(self) -> list[dict[str, Any]]:
-        return self.request("tools/list", {})["tools"]
+        tools: list[dict[str, Any]] = []
+        cursor = ""
+        observed_cursors: set[str] = set()
+        for _ in range(100):
+            result = self.request("tools/list", {"cursor": cursor} if cursor else {})
+            page = result.get("tools")
+            if not isinstance(page, list) or not all(isinstance(tool, dict) for tool in page):
+                raise MCPProtocolError(f"MCP backend {self.backend!r} returned an invalid tool catalog")
+            tools.extend(page)
+            next_cursor = result.get("nextCursor")
+            if not next_cursor:
+                return tools
+            cursor = str(next_cursor)
+            if cursor in observed_cursors:
+                raise MCPProtocolError(f"MCP backend {self.backend!r} repeated a pagination cursor")
+            observed_cursors.add(cursor)
+        raise MCPProtocolError(f"MCP backend {self.backend!r} exceeded the tool pagination limit")
 
     def call_tool(self, tool: str, arguments: dict[str, Any]) -> Any:
-        return self.request("tools/call", {"name": tool, "arguments": arguments})[
-            "structuredContent"
-        ]
+        response = self.request("tools/call", {"name": tool, "arguments": arguments})
+        if response.get("isError") is True:
+            return {
+                MCP_ERROR_MARKER: True,
+                "content": response.get("content", []),
+                "structuredContent": response.get("structuredContent"),
+            }
+        if "structuredContent" in response and response["structuredContent"] is not None:
+            return response["structuredContent"]
+        content = response.get("content")
+        if isinstance(content, list):
+            return {"content": content}
+        raise MCPProtocolError(f"MCP backend {self.backend!r} returned an invalid tool result")
 
     def close(self) -> None:
         if self._process.poll() is None:
@@ -158,3 +211,24 @@ class StdioMCPClient:
         assert self._process.stdin is not None
         self._process.stdin.write(json.dumps(payload, separators=(",", ":")) + "\n")
         self._process.stdin.flush()
+
+    def _handle_server_request(self, request: dict[str, Any]) -> None:
+        method = request.get("method")
+        if method == "roots/list":
+            result: dict[str, Any] = {"roots": []}
+            self._send({"jsonrpc": "2.0", "id": request["id"], "result": result})
+            return
+        if method == "ping":
+            self._send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+            return
+        self._send(
+            {
+                "jsonrpc": "2.0",
+                "id": request["id"],
+                "error": {"code": -32601, "message": f"unsupported server request: {method}"},
+            }
+        )
+
+
+def is_mcp_tool_error(value: Any) -> bool:
+    return isinstance(value, dict) and value.get(MCP_ERROR_MARKER) is True

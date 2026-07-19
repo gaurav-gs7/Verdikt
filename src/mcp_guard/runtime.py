@@ -12,7 +12,7 @@ from .groq import IncidentAnalyst
 from .metrics import Metrics
 from .models import ToolCallResult
 from .policy import PolicyEngine
-from .protocol import MCPProtocolError, StdioMCPClient
+from .protocol import MCPProtocolError, StdioMCPClient, is_mcp_tool_error
 from .telemetry import Telemetry
 from .tool_integrity import ToolIntegrityError, ToolIntegrityStore, verify_unique_tool_names
 from .upstreams import load_upstream_servers
@@ -39,6 +39,7 @@ class MCPGuardRuntime:
                 command=upstream.command,
                 environment=upstream.environment,
                 cwd=upstream.cwd,
+                inherit_environment=False,
             )
         pin_path = Path(os.getenv("MCP_GUARD_TOOL_PIN_PATH", str(audit_path.with_suffix(".tool-pins.json"))))
         self.tool_integrity = ToolIntegrityStore(pin_path, self.content_guard)
@@ -128,6 +129,11 @@ class MCPGuardRuntime:
                                     rule = "inbound_prompt_injection"
                                     reason = "tool output was quarantined by deterministic inbound content inspection"
                                     result = quarantine_result(inspection)
+                                elif is_mcp_tool_error(raw_result):
+                                    allowed = False
+                                    rule = "upstream_error"
+                                    reason = "upstream MCP tool reported an execution error"
+                                    result = self.policy.redact(raw_result)
                                 else:
                                     result = self.policy.redact(raw_result)
                                 tool_span.set_json_output(result)

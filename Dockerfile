@@ -12,7 +12,7 @@ COPY scripts ./scripts
 COPY src ./src
 
 RUN python -m pip install --no-cache-dir --upgrade pip \
-    && python -m pip install --no-cache-dir -e '.[mcp,observability,auth,redis]'
+    && python -m pip install --no-cache-dir -e '.[mcp,observability,auth,redis,aws]'
 
 EXPOSE 8080
 

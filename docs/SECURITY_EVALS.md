@@ -9,8 +9,8 @@ Current generated totals:
 | Status | Count |
 | --- | ---: |
 | Covered | 12 |
-| Partial | 20 |
-| Not covered | 6 |
+| Partial | 21 |
+| Not covered | 5 |
 | Total | 38 |
 
 Run the policy regressions and matrix validation:
@@ -35,6 +35,8 @@ High-value proofs include:
 - `MCP-33`: local/Redis/DynamoDB limits, bounded scans, concurrency caps, and circuit breakers constrain abuse.
 - `MCP-38`: audit mutation is detected and request decisions emit metrics and traces.
 
-The six explicit gaps are multi-tenant isolation (`MCP-06`), general SSRF/XSS defense (`MCP-09`), privacy inference across aggregated data (`MCP-25`), DNS-rebinding defense (`MCP-31`), planning drift (`MCP-35`), and multi-agent context hijacking (`MCP-36`).
+The five explicit gaps are multi-tenant isolation (`MCP-06`), general SSRF/XSS defense (`MCP-09`), privacy inference across aggregated data (`MCP-25`), planning drift (`MCP-35`), and multi-agent context hijacking (`MCP-36`). MCP-31 is partial: the HTTP boundary rejects untrusted `Origin` values, while complete deployment-edge Host validation remains future work.
 
-The independent attack fixture at [`tests/fixtures/external_mcp_server.py`](../tests/fixtures/external_mcp_server.py) is intentionally outside the `mcp_guard` package. It implements MCP JSON-RPC itself and supports `safe`, `result-injection`, and `rug-pull` modes. This proves the gateway boundary against a separate process; it is not represented as a third-party production server. The optional community filesystem configuration provides the real third-party interoperability path and requires Node/npm on first use.
+The independent attack fixture at [`tests/fixtures/external_mcp_server.py`](../tests/fixtures/external_mcp_server.py) is intentionally outside the `mcp_guard` package. It implements MCP JSON-RPC itself and supports safe, text-only, paginated, server-request, result-injection, and rug-pull modes. This proves the protocol and security boundary against a separate process; it is not represented as a third-party production server.
+
+Named third-party proof is handled separately by the versioned [community interoperability harness](COMMUNITY_INTEROP.md). Its credential-free profiles target the official MCP filesystem and memory servers; its opt-in profile targets GitHub's official server in read-only mode. The report records tool count, pin verification, guarded safe-call decisions, response hashes, and audit integrity without retaining raw third-party content.

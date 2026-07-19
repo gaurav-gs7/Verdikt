@@ -168,6 +168,19 @@ class ExternalMCPIntegrationTest(unittest.TestCase):
             self.assertEqual(result.rule, "tool_integrity")
             self.assertIn("definition drift", result.reason)
 
+    def test_denies_and_audits_mcp_tool_error_response(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = self._runtime(directory, "tool-error")
+            self.addCleanup(runtime.close)
+
+            result = runtime.call_tool(
+                "independent", "external.fetch_issue", {"issue_id": "INC-ERROR"}
+            )
+
+            self.assertFalse(result.allowed)
+            self.assertEqual(result.rule, "upstream_error")
+            self.assertEqual(runtime.audit.recent()[0]["rule"], "upstream_error")
+
 
 class AuditIntegrityTest(unittest.TestCase):
     def test_hash_chain_verifies_and_detects_tampering(self) -> None:

@@ -19,6 +19,8 @@ Runs on push and pull request:
 - packages the serverless Lambda artifact
 - runs Terraform fmt and validate for both AWS modules
 - builds the production MCP Docker image
+- runs pinned official Filesystem and Memory MCP interoperability checks
+- uploads the sanitized interoperability evidence JSON
 
 This workflow does not create AWS resources.
 

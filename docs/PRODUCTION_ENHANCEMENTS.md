@@ -18,6 +18,7 @@ export MCP_GUARD_JWT_HS256_SECRET="local-jwt-secret"
 export MCP_GUARD_JWT_ISSUER="https://issuer.example.test"
 export MCP_GUARD_RESOURCE_URI="http://127.0.0.1:8080/mcp"
 export MCP_GUARD_JWT_AUDIENCE="http://127.0.0.1:8080/mcp"
+export MCP_GUARD_AUTHORIZATION_SERVER="https://issuer.example.test"
 export MCP_GUARD_REQUIRED_SCOPES="mcp:tools"
 export MCP_GUARD_JWT_REQUIRED_GROUP="sre"
 export MCP_GUARD_ADMIN_SCOPE="mcp:admin"
@@ -36,6 +37,8 @@ export MCP_GUARD_AUTHORIZATION_SERVER="https://your-authorization-server.example
 export MCP_GUARD_REQUIRED_SCOPES="mcp:tools"
 export MCP_GUARD_JWT_REQUIRED_GROUP="sre"
 ```
+
+JWT mode fails startup unless issuer, audience, canonical resource URI, and authorization-server discovery are configured. Unauthorized responses advertise protected-resource metadata and required scopes. Requests that include an HTTP `Origin` header must match the canonical resource origin; set `MCP_GUARD_ALLOWED_ORIGINS` to a comma-separated allowlist when a separate browser application calls the MCP endpoint.
 
 JWT identity is bound into policy evaluation. If a token subject is `readonly` and the tool arguments claim `actor=sre-oncall`, the call is denied with `identity_mismatch`. Fields such as `access_token`, `authorization`, and `upstream_token` are rejected recursively, so a caller token is never forwarded to an upstream service.
 
@@ -63,6 +66,14 @@ or:
 ```json
 {"UPSTREAM_TOKEN": {"from_aws_secret": "gatetrace/upstreams/github", "json_key": "token"}}
 ```
+
+Local source installs that use Secrets Manager or the S3 audit sink need the AWS profile:
+
+```bash
+python3 -m pip install -e '.[aws]'
+```
+
+The production container includes this profile. Lambda uses the AWS-managed `boto3` runtime dependency.
 
 The official Streamable HTTP server exposes these configured servers through `guard.call_upstream`; the stdio gateway transparently advertises their original tools.
 
