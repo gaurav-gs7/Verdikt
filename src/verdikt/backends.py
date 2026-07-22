@@ -46,7 +46,11 @@ PLATFORM_TOOLS = [
     Tool(
         "platform.read_logs",
         "Read recent application logs for a production service.",
-        _schema(service={"type": "string"}, query={"type": "string"}, limit={"type": "integer"}),
+        _schema(
+            service={"type": "string"},
+            query={"type": "string"},
+            limit={"type": "integer", "minimum": 1, "maximum": 100},
+        ),
     ),
     Tool(
         "platform.run_diagnostic",
@@ -175,13 +179,16 @@ class PlatformOpsBackend:
                 "api_key": "sk-demo-sensitive-value",
             }
         if tool == "platform.read_logs":
+            limit = arguments["limit"]
+            if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100:
+                raise MCPProtocolError("log limit must be an integer between 1 and 100")
             return {
                 "service": service,
                 "query": arguments["query"],
                 "logs": [
                     "2026-05-31T09:15:02Z WARN payment provider timeout dependency=stripe",
                     "2026-05-31T09:15:03Z ERROR request failed route=/v1/charge status=503",
-                ][: arguments["limit"]],
+                ][:limit],
             }
         if tool == "platform.run_diagnostic":
             command = arguments["command"]
@@ -191,11 +198,17 @@ class PlatformOpsBackend:
                 "latency-summary": "p50_ms=91 p95_ms=440 p99_ms=836",
             }
             if command not in diagnostics:
-                raise MCPProtocolError(f"diagnostic command is not allowlisted: {command}")
+                raise MCPProtocolError("diagnostic command is not allowlisted")
             return {"service": service, "command": command, "output": diagnostics[command]}
         if tool == "platform.restart_deployment":
             state["restarts"] += 1
-            return {"service": service, "action": "rolling_restart", "status": "completed", **state}
+            return {
+                "service": service,
+                **state,
+                "service_status": state["status"],
+                "action": "rolling_restart",
+                "status": "completed",
+            }
         if tool == "platform.rollback_deployment":
             previous = state["release"]
             state["release"] = arguments["version"]
@@ -222,6 +235,8 @@ class KubernetesBackend:
 
     def __init__(self) -> None:
         self.mode = os.getenv("VERDIKT_KUBERNETES_MODE", "simulated").lower()
+        if self.mode not in {"simulated", "kubectl"}:
+            raise ValueError("VERDIKT_KUBERNETES_MODE must be simulated or kubectl")
         self.pods = {
             ("prod", "payment-service-xyz"): {
                 "namespace": "prod",
@@ -309,15 +324,34 @@ class KubernetesBackend:
     @staticmethod
     def _kubectl(args: list[str]) -> str:
         command = ["kubectl", *args]
-        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=20)
+        try:
+            completed = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+        except FileNotFoundError as exc:
+            raise MCPProtocolError("kubectl executable was not found") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise MCPProtocolError("kubectl command timed out") from exc
         if completed.returncode != 0:
-            raise MCPProtocolError(completed.stderr.strip() or "kubectl command failed")
+            raise MCPProtocolError(
+                f"kubectl command failed with exit code {completed.returncode}"
+            )
         return completed.stdout.strip()
 
     def _kubectl_json(self, args: list[str]) -> dict[str, Any]:
         import json
 
-        return json.loads(self._kubectl(args))
+        try:
+            value = json.loads(self._kubectl(args))
+        except json.JSONDecodeError as exc:
+            raise MCPProtocolError("kubectl returned malformed JSON") from exc
+        if not isinstance(value, dict):
+            raise MCPProtocolError("kubectl returned a non-object JSON response")
+        return value
 
 
 class IncidentBackend:

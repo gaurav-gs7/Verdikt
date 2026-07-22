@@ -1,0 +1,567 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+from verdikt.auth import create_hs256_jwt
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _free_port() -> int:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
+
+
+class RealMCPStreamableHTTPEndToEndTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.temp_dir = tempfile.TemporaryDirectory()
+        root = Path(cls.temp_dir.name)
+        cls.port = _free_port()
+        environment = {
+            **os.environ,
+            "PYTHONPATH": str(PROJECT_ROOT / "src"),
+            "VERDIKT_HTTP_BEARER_TOKEN": "mcp-e2e-token",
+            "VERDIKT_APPROVAL_SECRET": "mcp-e2e-approval-secret",
+            "VERDIKT_AUDIT_HMAC_SECRET": "mcp-e2e-audit-secret",
+            "VERDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
+            "VERDIKT_AUDIT_VERIFY_ON_STARTUP": "true",
+            "VERDIKT_AUDIT_SINK": "none",
+            "VERDIKT_TELEMETRY": "disabled",
+            "VERDIKT_TOOL_PIN_PATH": str(root / "pins.json"),
+            "VERDIKT_UPSTREAM_CONFIG": "",
+            "VERDIKT_ALLOW_DIRECT_APPROVAL": "true",
+            "GROQ_API_KEY": "",
+        }
+        cls.process = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "verdikt.cli",
+                "--audit-db",
+                str(root / "audit.db"),
+                "serve-real-mcp",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(cls.port),
+                "--log-level",
+                "warning",
+            ],
+            cwd=PROJECT_ROOT,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        cls.base_url = f"http://127.0.0.1:{cls.port}"
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            if cls.process.poll() is not None:
+                stdout, stderr = cls.process.communicate(timeout=3)
+                raise RuntimeError(f"real MCP server exited:\n{stdout}\n{stderr}")
+            try:
+                with urllib.request.urlopen(f"{cls.base_url}/healthz", timeout=1) as response:
+                    if response.status == 200:
+                        break
+            except (OSError, urllib.error.URLError):
+                time.sleep(0.1)
+        else:
+            raise RuntimeError("real MCP server did not become healthy")
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.process.poll() is None:
+            cls.process.terminate()
+            try:
+                cls.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                cls.process.kill()
+                cls.process.wait(timeout=5)
+        for stream in (cls.process.stdout, cls.process.stderr):
+            if stream is not None:
+                stream.close()
+        cls.temp_dir.cleanup()
+
+    def test_public_protected_authentication_origin_and_slack_boundaries(self) -> None:
+        with urllib.request.urlopen(f"{self.base_url}/healthz", timeout=3) as response:
+            health = json.load(response)
+        self.assertEqual(health["status"], "ok")
+        self.assertEqual(health["auth"], "bearer")
+
+        with urllib.request.urlopen(
+            f"{self.base_url}/.well-known/oauth-protected-resource", timeout=3
+        ) as response:
+            metadata = json.load(response)
+        self.assertEqual(metadata["resource"], f"{self.base_url}/mcp")
+        self.assertIn("mcp:tools", metadata["scopes_supported"])
+
+        for token in ("", "wrong-token"):
+            request = urllib.request.Request(
+                f"{self.base_url}/metrics",
+                headers={"Authorization": f"Bearer {token}"} if token else {},
+            )
+            with self.subTest(token=token), self.assertRaises(
+                urllib.error.HTTPError
+            ) as raised:
+                urllib.request.urlopen(request, timeout=3)
+            self.assertEqual(raised.exception.code, 401)
+            self.assertIn("resource_metadata", raised.exception.headers["WWW-Authenticate"])
+            raised.exception.close()
+
+        invalid_origin = urllib.request.Request(
+            f"{self.base_url}/metrics",
+            headers={
+                "Authorization": "Bearer mcp-e2e-token",
+                "Origin": "https://attacker.invalid",
+            },
+        )
+        with self.assertRaises(urllib.error.HTTPError) as raised:
+            urllib.request.urlopen(invalid_origin, timeout=3)
+        self.assertEqual(raised.exception.code, 403)
+        raised.exception.close()
+
+        metrics = urllib.request.Request(
+            f"{self.base_url}/metrics",
+            headers={"Authorization": "Bearer mcp-e2e-token"},
+        )
+        with urllib.request.urlopen(metrics, timeout=3) as response:
+            self.assertIn("verdikt_tool_calls_total", response.read().decode())
+
+        callback = urllib.request.Request(
+            f"{self.base_url}/integrations/slack/actions",
+            data=urllib.parse.urlencode({"payload": "{}"}).encode(),
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as raised:
+            urllib.request.urlopen(callback, timeout=3)
+        self.assertEqual(raised.exception.code, 400)
+        self.assertIn("Slack approvals require", raised.exception.read().decode())
+        raised.exception.close()
+
+    def test_every_published_mcp_tool_through_official_client(self) -> None:
+        results = asyncio.run(self._exercise_every_tool())
+        self.assertEqual(results["health"]["result"]["service"], "payments-api")
+        self.assertEqual(results["config"]["result"]["api_key"], "[REDACTED]")
+        self.assertEqual(len(results["logs"]["result"]["logs"]), 1)
+        self.assertEqual(results["diagnostic"]["result"]["command"], "dependency-health")
+        self.assertEqual(results["restart_dry_run"]["action"], "DRY_RUN_ONLY")
+        self.assertFalse(results["restart_dry_run"]["result"]["executed"])
+        self.assertEqual(results["rollback_shadow"]["action"], "SHADOW_MODE")
+        self.assertEqual(results["pod"]["result"]["status"], "Running")
+        self.assertEqual(results["pod_restart_dry_run"]["action"], "DRY_RUN_ONLY")
+        self.assertEqual(results["rollout"]["result"]["status"], "healthy")
+        self.assertEqual(results["incident_timeline"]["result"]["id"], results["incident_id"])
+        self.assertEqual(len(results["incident_timeline"]["result"]["timeline"]), 2)
+        self.assertEqual(results["unknown_upstream"]["rule"], "unknown_external_server")
+        self.assertEqual(results["approval_request"]["status"], "ERROR")
+        self.assertEqual(results["approval_status"]["status"], "ERROR")
+        self.assertTrue(
+            results["approved_restart"]["allowed"], results["approved_restart"]
+        )
+        self.assertEqual(results["approved_restart"]["result"]["status"], "completed")
+        self.assertEqual(results["killed_health"]["rule"], "kill_switch")
+        self.assertIn("platform.health", results["disabled_tool"]["disabled_tools"])
+        self.assertIn("incident", results["disabled_server"]["disabled_servers"])
+        self.assertTrue(results["runtime_state"]["audit_integrity"]["valid"])
+        self.assertEqual(results["runtime_state"]["rate_limiter"]["mode"], "local")
+
+    async def _exercise_every_tool(self) -> dict[str, object]:
+        import httpx
+        from mcp import ClientSession
+        from mcp.client.streamable_http import streamable_http_client
+
+        results: dict[str, object] = {}
+        async with httpx.AsyncClient(
+            headers={"Authorization": "Bearer mcp-e2e-token"}, timeout=10
+        ) as http_client:
+            async with streamable_http_client(
+                f"{self.base_url}/mcp", http_client=http_client
+            ) as (read_stream, write_stream, _):
+                async with ClientSession(read_stream, write_stream) as session:
+                    initialized = await session.initialize()
+                    self.assertTrue(initialized.protocolVersion)
+                    listed = await session.list_tools()
+                    names = {tool.name for tool in listed.tools}
+                    expected = {
+                        "platform.health",
+                        "platform.read_config",
+                        "platform.read_logs",
+                        "platform.run_diagnostic",
+                        "platform.restart_deployment",
+                        "platform.rollback_deployment",
+                        "kubernetes.get_pod",
+                        "kubernetes.restart_pod",
+                        "kubernetes.rollout_status",
+                        "incident.create",
+                        "incident.attach_evidence",
+                        "incident.timeline",
+                        "verdikt.issue_approval",
+                        "verdikt.request_approval",
+                        "verdikt.approval_status",
+                        "verdikt.call_upstream",
+                        "verdikt.set_tool_enabled",
+                        "verdikt.set_server_enabled",
+                        "verdikt.runtime_state",
+                    }
+                    self.assertEqual(names, expected)
+
+                    async def call(name: str, arguments: dict[str, object]) -> dict[str, object]:
+                        response = await session.call_tool(name, arguments)
+                        self.assertFalse(response.isError, f"{name}: {response}")
+                        payload = response.structuredContent
+                        self.assertIsInstance(payload, dict, f"{name}: {response}")
+                        return payload
+
+                    results["health"] = await call("platform.health", {"service": "payments-api"})
+                    results["config"] = await call("platform.read_config", {"service": "payments-api"})
+                    results["logs"] = await call(
+                        "platform.read_logs",
+                        {"service": "payments-api", "query": "status=503", "limit": 1},
+                    )
+                    results["diagnostic"] = await call(
+                        "platform.run_diagnostic",
+                        {"service": "payments-api", "command": "dependency-health"},
+                    )
+                    results["restart_dry_run"] = await call(
+                        "platform.restart_deployment",
+                        {
+                            "service": "payments-api",
+                            "actor": "sre-oncall",
+                            "rollback_plan": "verify health then restore the previous deployment",
+                            "dry_run": True,
+                        },
+                    )
+                    results["rollback_shadow"] = await call(
+                        "platform.rollback_deployment",
+                        {
+                            "service": "payments-api",
+                            "version": "payments-api@stable",
+                            "actor": "sre-oncall",
+                            "rollback_plan": "verify health then restore the previous deployment",
+                            "shadow_mode": True,
+                        },
+                    )
+                    results["pod"] = await call(
+                        "kubernetes.get_pod",
+                        {"namespace": "prod", "pod": "payment-service-xyz"},
+                    )
+                    results["pod_restart_dry_run"] = await call(
+                        "kubernetes.restart_pod",
+                        {
+                            "namespace": "prod",
+                            "pod": "payment-service-xyz",
+                            "actor": "sre-oncall",
+                            "rollback_plan": "wait for replacement and restore workload if readiness fails",
+                            "dry_run": True,
+                        },
+                    )
+                    results["rollout"] = await call(
+                        "kubernetes.rollout_status",
+                        {"namespace": "prod", "deployment": "payment-service"},
+                    )
+                    created = await call(
+                        "incident.create", {"title": "MCP E2E", "severity": "SEV-3"}
+                    )
+                    incident_id = str(created["result"]["id"])
+                    results["incident_id"] = incident_id
+                    await call(
+                        "incident.attach_evidence",
+                        {"incident_id": incident_id, "evidence": {"correlation_id": "e2e"}},
+                    )
+                    results["incident_timeline"] = await call(
+                        "incident.timeline", {"incident_id": incident_id}
+                    )
+                    results["unknown_upstream"] = await call(
+                        "verdikt.call_upstream",
+                        {"server": "missing", "tool": "missing.tool", "arguments": {}},
+                    )
+                    results["approval_request"] = await call(
+                        "verdikt.request_approval",
+                        {
+                            "actor": "sre-oncall",
+                            "reason": "test disabled Slack flow",
+                            "server": "platform-ops",
+                            "tool": "platform.restart_deployment",
+                            "arguments": {},
+                        },
+                    )
+                    results["approval_status"] = await call(
+                        "verdikt.approval_status",
+                        {"request_id": "missing", "actor": "sre-oncall"},
+                    )
+
+                    restart_arguments = {
+                        "service": "payments-api",
+                        "actor": "sre-oncall",
+                        "environment": "production",
+                        "rollback_plan": "verify health then restore the previous deployment",
+                    }
+                    approval = await call(
+                        "verdikt.issue_approval",
+                        {
+                            "actor": "sre-oncall",
+                            "reason": "approved E2E restart",
+                            "server": "platform-ops",
+                            "tool": "platform.restart_deployment",
+                            "arguments": restart_arguments,
+                        },
+                    )
+                    results["approved_restart"] = await call(
+                        "platform.restart_deployment",
+                        {**restart_arguments, "approval_token": approval["approval_token"]},
+                    )
+
+                    results["disabled_tool"] = await call(
+                        "verdikt.set_tool_enabled",
+                        {"tool": "platform.health", "enabled": False},
+                    )
+                    results["killed_health"] = await call(
+                        "platform.health", {"service": "payments-api"}
+                    )
+                    await call(
+                        "verdikt.set_tool_enabled",
+                        {"tool": "platform.health", "enabled": True},
+                    )
+                    results["disabled_server"] = await call(
+                        "verdikt.set_server_enabled",
+                        {"server": "incident", "enabled": False},
+                    )
+                    await call(
+                        "verdikt.set_server_enabled",
+                        {"server": "incident", "enabled": True},
+                    )
+                    results["runtime_state"] = await call(
+                        "verdikt.runtime_state", {"limit": 100}
+                    )
+        return results
+
+
+class RealMCPJWTAuthorizationEndToEndTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.temp_dir = tempfile.TemporaryDirectory()
+        root = Path(cls.temp_dir.name)
+        cls.port = _free_port()
+        cls.issuer = "https://issuer.verdikt.test"
+        cls.audience = "verdikt-e2e"
+        cls.jwt_secret = "jwt-e2e-signing-secret"
+        environment = {
+            **os.environ,
+            "PYTHONPATH": str(PROJECT_ROOT / "src"),
+            "VERDIKT_JWT_HS256_SECRET": cls.jwt_secret,
+            "VERDIKT_JWT_ISSUER": cls.issuer,
+            "VERDIKT_JWT_AUDIENCE": cls.audience,
+            "VERDIKT_AUTHORIZATION_SERVER": cls.issuer,
+            "VERDIKT_RESOURCE_URI": f"http://127.0.0.1:{cls.port}/mcp",
+            "VERDIKT_REQUIRED_SCOPES": "mcp:tools",
+            "VERDIKT_ADMIN_SCOPE": "mcp:admin",
+            "VERDIKT_APPROVAL_SECRET": "jwt-e2e-approval-secret",
+            "VERDIKT_AUDIT_HMAC_SECRET": "jwt-e2e-audit-secret",
+            "VERDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
+            "VERDIKT_AUDIT_SINK": "none",
+            "VERDIKT_TELEMETRY": "disabled",
+            "VERDIKT_TOOL_PIN_PATH": str(root / "pins.json"),
+            "VERDIKT_UPSTREAM_CONFIG": "",
+            "VERDIKT_ALLOW_DIRECT_APPROVAL": "false",
+        }
+        cls.process = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "verdikt.cli",
+                "--audit-db",
+                str(root / "audit.db"),
+                "serve-real-mcp",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(cls.port),
+                "--log-level",
+                "warning",
+            ],
+            cwd=PROJECT_ROOT,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        cls.base_url = f"http://127.0.0.1:{cls.port}"
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            if cls.process.poll() is not None:
+                stdout, stderr = cls.process.communicate(timeout=3)
+                raise RuntimeError(f"JWT MCP server exited:\n{stdout}\n{stderr}")
+            try:
+                with urllib.request.urlopen(f"{cls.base_url}/healthz", timeout=1):
+                    break
+            except (OSError, urllib.error.URLError):
+                time.sleep(0.1)
+        else:
+            raise RuntimeError("JWT MCP server did not become healthy")
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.process.poll() is None:
+            cls.process.terminate()
+            try:
+                cls.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                cls.process.kill()
+                cls.process.wait(timeout=5)
+        for stream in (cls.process.stdout, cls.process.stderr):
+            if stream is not None:
+                stream.close()
+        cls.temp_dir.cleanup()
+
+    def test_jwt_subject_binding_scope_and_admin_authorization(self) -> None:
+        now = int(time.time())
+        operator = create_hs256_jwt(
+            {
+                "sub": "readonly",
+                "iss": self.issuer,
+                "aud": self.audience,
+                "exp": now + 300,
+                "scope": "mcp:tools",
+            },
+            self.jwt_secret,
+        )
+        admin = create_hs256_jwt(
+            {
+                "sub": "platform-admin",
+                "iss": self.issuer,
+                "aud": self.audience,
+                "exp": now + 300,
+                "scope": "mcp:tools mcp:admin",
+            },
+            self.jwt_secret,
+        )
+        wrong_audience = create_hs256_jwt(
+            {
+                "sub": "platform-admin",
+                "iss": self.issuer,
+                "aud": "wrong-resource",
+                "exp": now + 300,
+                "scope": "mcp:tools mcp:admin",
+            },
+            self.jwt_secret,
+        )
+
+        denied_request = urllib.request.Request(
+            f"{self.base_url}/metrics",
+            headers={"Authorization": f"Bearer {wrong_audience}"},
+        )
+        with self.assertRaises(urllib.error.HTTPError) as raised:
+            urllib.request.urlopen(denied_request, timeout=3)
+        self.assertEqual(raised.exception.code, 401)
+        raised.exception.close()
+
+        operator_results = asyncio.run(self._operator_calls(operator))
+        self.assertTrue(operator_results["health"]["allowed"])
+        self.assertEqual(operator_results["spoofed_restart"]["rule"], "identity_mismatch")
+        self.assertEqual(operator_results["admin_action"]["rule"], "admin_authorization")
+        self.assertEqual(operator_results["runtime_state"]["rule"], "admin_authorization")
+
+        admin_results = asyncio.run(self._admin_calls(admin))
+        self.assertEqual(admin_results["direct_approval"]["rule"], "human_approval_required")
+        self.assertIn("platform.health", admin_results["disabled"]["disabled_tools"])
+        self.assertEqual(admin_results["killed_health"]["rule"], "kill_switch")
+        self.assertNotIn("platform.health", admin_results["enabled"]["disabled_tools"])
+        self.assertTrue(admin_results["runtime_state"]["audit_integrity"]["valid"])
+
+    async def _operator_calls(self, token: str) -> dict[str, dict[str, object]]:
+        return await self._jwt_calls(
+            token,
+            [
+                ("health", "platform.health", {"service": "payments-api"}),
+                (
+                    "spoofed_restart",
+                    "platform.restart_deployment",
+                    {
+                        "service": "payments-api",
+                        "actor": "sre-oncall",
+                        "rollback_plan": "restore prior release",
+                        "dry_run": True,
+                    },
+                ),
+                (
+                    "admin_action",
+                    "verdikt.set_tool_enabled",
+                    {"tool": "platform.health", "enabled": False},
+                ),
+                ("runtime_state", "verdikt.runtime_state", {}),
+            ],
+        )
+
+    async def _admin_calls(self, token: str) -> dict[str, dict[str, object]]:
+        return await self._jwt_calls(
+            token,
+            [
+                (
+                    "direct_approval",
+                    "verdikt.issue_approval",
+                    {
+                        "actor": "platform-admin",
+                        "reason": "should require human approval",
+                        "server": "platform-ops",
+                        "tool": "platform.restart_deployment",
+                        "arguments": {},
+                    },
+                ),
+                (
+                    "disabled",
+                    "verdikt.set_tool_enabled",
+                    {"tool": "platform.health", "enabled": False},
+                ),
+                ("killed_health", "platform.health", {"service": "payments-api"}),
+                (
+                    "enabled",
+                    "verdikt.set_tool_enabled",
+                    {"tool": "platform.health", "enabled": True},
+                ),
+                ("runtime_state", "verdikt.runtime_state", {}),
+            ],
+        )
+
+    async def _jwt_calls(
+        self,
+        token: str,
+        calls: list[tuple[str, str, dict[str, object]]],
+    ) -> dict[str, dict[str, object]]:
+        import httpx
+        from mcp import ClientSession
+        from mcp.client.streamable_http import streamable_http_client
+
+        results: dict[str, dict[str, object]] = {}
+        async with httpx.AsyncClient(
+            headers={"Authorization": f"Bearer {token}"}, timeout=10
+        ) as http_client:
+            async with streamable_http_client(
+                f"{self.base_url}/mcp", http_client=http_client
+            ) as (read_stream, write_stream, _):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    for key, name, arguments in calls:
+                        response = await session.call_tool(name, arguments)
+                        self.assertFalse(response.isError, f"{name}: {response}")
+                        self.assertIsInstance(response.structuredContent, dict)
+                        results[key] = response.structuredContent
+        return results
+
+
+if __name__ == "__main__":
+    unittest.main()

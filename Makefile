@@ -1,7 +1,7 @@
-.PHONY: test demo eval attackbench-smoke failure-test interop-community dashboard real-mcp trace docker-build observability-up observability-down helm-template aws-build-push aws-deploy aws-delete terraform-deploy terraform-destroy terraform-fmt serverless-package serverless-deploy serverless-destroy serverless-fmt
+.PHONY: test demo eval attackbench-smoke performance-smoke failure-test interop-community dashboard real-mcp trace docker-build observability-up observability-down helm-template aws-build-push aws-deploy aws-delete terraform-deploy terraform-destroy terraform-fmt serverless-package serverless-deploy serverless-destroy serverless-fmt
 
 test:
-	PYTHONPATH=src ./scripts/python.sh -m unittest discover -s tests -v
+	./scripts/run_release_tests.sh
 
 demo:
 	./scripts/run_demo.sh --audit-db /tmp/verdikt-demo.db
@@ -11,6 +11,9 @@ eval:
 
 attackbench-smoke:
 	./scripts/run_attackbench.sh tests/fixtures/attackbench_smoke.jsonl build/attackbench-smoke.json
+
+performance-smoke:
+	./scripts/run_performance_benchmark.sh build/performance-smoke.json --iterations 25 --warmup 5 --max-p99-ms 100 --min-throughput 10
 
 failure-test:
 	./scripts/run_failure_tests.sh
@@ -37,7 +40,11 @@ observability-down:
 	docker compose -f deploy/observability/docker-compose.yml down
 
 helm-template:
-	helm template verdikt charts/verdikt
+	helm template verdikt charts/verdikt \
+		--set-string auth.bearerToken=local-render-token \
+		--set-string auth.resourceUri=http://127.0.0.1:8080/mcp \
+		--set-string approvalSecret=local-render-approval-secret \
+		--set-string audit.hmacSecret=local-render-independent-audit-secret
 
 aws-build-push:
 	./scripts/aws/build_push_ecr.sh

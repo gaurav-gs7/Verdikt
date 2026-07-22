@@ -4,6 +4,8 @@ __pycache__/
 .venv/
 data/
 build/
+.coverage
+.coverage.*
 .DS_Store
 
 # Terraform local state and provider cache

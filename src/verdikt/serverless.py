@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 import datetime as dt
+import base64
+import binascii
 import hashlib
 import hmac
 import json
 import os
 import time
-import traceback
 import uuid
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from .approval import ApprovalAuthority, ApprovalTokenError
+from .approval import ApprovalAuthority
 from .backends import INCIDENT_TOOLS, KUBERNETES_TOOLS, PLATFORM_TOOLS, IncidentBackend, KubernetesBackend, PlatformOpsBackend
 from .content_guard import ContentGuard, quarantine_result
 from .findings import build_finding_event, should_emit_finding
@@ -23,6 +24,8 @@ from .risk import RiskEngine
 
 POLICY_PATH = Path(os.getenv("VERDIKT_POLICY_PATH", "config/policies.yaml"))
 NAMESPACE = "Verdikt/Serverless"
+MAX_REQUEST_BODY_BYTES = 1_048_576
+MAX_TOOL_RESPONSE_BYTES = 1_048_576
 
 _POLICY: ServerlessPolicy | None = None
 _PLATFORM_BACKEND: PlatformOpsBackend | None = None
@@ -61,22 +64,34 @@ def gateway_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 server=body["server"],
                 tool=body["tool"],
                 arguments=body.get("arguments") or {},
-                correlation_id=body.get("correlation_id") or request_id,
+                correlation_id=_safe_correlation_id(body.get("correlation_id"), request_id),
             )
             _emit_latency(result["server"], result["tool"], result["allowed"], started)
             return _response(200 if result["allowed"] else 403, result)
         return _response(404, {"error": "not found", "path": path})
     except KeyError as exc:
         return _response(400, {"error": f"missing required field: {exc.args[0]}"})
+    except PermissionError:
+        return _response(403, {"error": "operation is disabled"})
+    except (ValueError, TypeError, json.JSONDecodeError, UnicodeDecodeError, binascii.Error):
+        return _response(400, {"error": "invalid request"})
     except Exception as exc:  # pragma: no cover - Lambda safety net
         _metric("GatewayErrors", 1, {"FailureClass": exc.__class__.__name__})
+        print(
+            json.dumps(
+                {
+                    "event": "gateway_error",
+                    "failure_class": exc.__class__.__name__,
+                    "request_id": request_id,
+                },
+                separators=(",", ":"),
+            )
+        )
         return _response(
             500,
             {
                 "error": "gateway_error",
-                "message": str(exc),
                 "request_id": request_id,
-                "trace": traceback.format_exc(limit=2),
             },
         )
 
@@ -96,6 +111,8 @@ def tool_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     server = event["server"]
     tool = event["tool"]
     arguments = event.get("arguments") or {}
+    if not isinstance(arguments, dict):
+        return {"ok": False, "error": "tool arguments must be an object", "failure_class": "ValueError"}
 
     try:
         if server == "platform-ops":
@@ -109,7 +126,11 @@ def tool_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         _persist_tool_state(server, tool, arguments, result)
         return {"ok": True, "result": result}
     except Exception as exc:
-        return {"ok": False, "error": str(exc), "failure_class": exc.__class__.__name__}
+        return {
+            "ok": False,
+            "error": "tool execution failed",
+            "failure_class": exc.__class__.__name__,
+        }
 
 
 def _call_guarded_tool(
@@ -147,7 +168,18 @@ def _call_guarded_tool(
             else:
                 allowed = False
                 rule = "upstream_error"
-                reason = tool_response.get("error", "tool lambda failed")
+                reported_error = tool_response.get("error")
+                safe_errors = {
+                    "tool execution failed",
+                    "tool lambda invocation failed",
+                    "tool lambda response exceeded the size limit",
+                    "tool lambda returned an invalid response",
+                }
+                reason = (
+                    reported_error
+                    if isinstance(reported_error, str) and reported_error in safe_errors
+                    else "tool execution failed"
+                )
                 _record_tool_failure(server, tool, reason)
 
     event = {
@@ -228,6 +260,14 @@ class ServerlessPolicy(PolicyEngine):
             serialized = json.dumps(arguments, sort_keys=True)
             if any(pattern.search(serialized) for pattern in self._blocked):
                 return self._decision(False, "arguments matched a blocked security pattern", "blocked_pattern", risk)
+            invalid_argument = self._find_disallowed_argument_value(tool, arguments)
+            if invalid_argument:
+                return self._decision(
+                    False,
+                    f"argument {invalid_argument!r} is not allowlisted for {tool!r}",
+                    "argument_allowlist",
+                    risk,
+                )
             if self._dry_run_requested(tool, arguments):
                 return self._decision(
                     True,
@@ -335,15 +375,22 @@ def _issue_approval(body: dict[str, Any]) -> dict[str, Any]:
         raise PermissionError("direct approval issuance is disabled; use an external human approval workflow")
     policy = _policy()
     arguments = body.get("arguments") or {}
+    if not isinstance(arguments, dict):
+        raise ValueError("arguments must be an object")
+    ttl_seconds = body.get("ttl_seconds", 300)
+    if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int):
+        raise ValueError("ttl_seconds must be an integer")
+    if not 1 <= ttl_seconds <= 900:
+        raise ValueError("ttl_seconds must be between 1 and 900")
     token = policy.issue_approval(
         actor=body["actor"],
         reason=body["reason"],
         server=body["server"],
         tool=body["tool"],
         arguments=arguments,
-        ttl_seconds=int(body.get("ttl_seconds", 300)),
+        ttl_seconds=ttl_seconds,
     )
-    expires_at = int(time.time()) + int(body.get("ttl_seconds", 300))
+    expires_at = int(time.time()) + ttl_seconds
     _put_state(
         "APPROVAL",
         _sha256(token),
@@ -360,7 +407,9 @@ def _issue_approval(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def _set_kill_switch(body: dict[str, Any]) -> dict[str, Any]:
-    enabled = bool(body.get("enabled", True))
+    enabled = body.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ValueError("enabled must be a boolean")
     if "tool" in body:
         pk, sk = "KILL_SWITCH", f"TOOL#{body['tool']}"
         target = body["tool"]
@@ -371,6 +420,8 @@ def _set_kill_switch(body: dict[str, Any]) -> dict[str, Any]:
         target_type = "server"
     else:
         raise KeyError("tool_or_server")
+    if not isinstance(target, str) or not target.strip():
+        raise ValueError("kill-switch target must be a non-empty string")
     _put_state(pk, sk, {"enabled": enabled, "target": target, "target_type": target_type, "updated_at": _utc_now()})
     return {"target_type": target_type, "target": target, "enabled": enabled}
 
@@ -416,8 +467,18 @@ def _invoke_tool_lambda(server: str, tool: str, arguments: dict[str, Any], corre
         InvocationType="RequestResponse",
         Payload=json.dumps(payload).encode(),
     )
-    raw = response["Payload"].read()
-    return json.loads(raw or b"{}")
+    if response.get("FunctionError"):
+        return {"ok": False, "error": "tool lambda invocation failed"}
+    raw = response["Payload"].read(MAX_TOOL_RESPONSE_BYTES + 1)
+    if len(raw) > MAX_TOOL_RESPONSE_BYTES:
+        return {"ok": False, "error": "tool lambda response exceeded the size limit"}
+    try:
+        parsed = json.loads(raw or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {"ok": False, "error": "tool lambda returned an invalid response"}
+    if not isinstance(parsed, dict):
+        return {"ok": False, "error": "tool lambda returned an invalid response"}
+    return parsed
 
 
 def _record_tool_success(server: str, tool: str) -> None:
@@ -566,6 +627,10 @@ def _emit_latency(server: str, tool: str, allowed: bool, started: float) -> None
 
 
 def _metric(name: str, value: float, dimensions: dict[str, str], unit: str = "Count") -> None:
+    if not os.getenv("AWS_LAMBDA_FUNCTION_NAME") and os.getenv(
+        "VERDIKT_SERVERLESS_METRICS_LOCAL", ""
+    ).lower() not in {"1", "true", "yes"}:
+        return
     try:
         _cloudwatch_client().put_metric_data(
             Namespace=NAMESPACE,
@@ -682,9 +747,14 @@ def _key(name: str) -> Any:
 def _authorized(event: dict[str, Any]) -> bool:
     expected = _api_token()
     if not expected:
-        return True
+        return os.getenv("VERDIKT_ALLOW_UNAUTHENTICATED_SERVERLESS", "").lower() in {
+            "1",
+            "true",
+            "yes",
+        }
     headers = {str(key).lower(): value for key, value in (event.get("headers") or {}).items()}
-    return headers.get("authorization") == f"Bearer {expected}"
+    supplied = headers.get("authorization")
+    return isinstance(supplied, str) and hmac.compare_digest(supplied, f"Bearer {expected}")
 
 
 def _api_token() -> str:
@@ -730,14 +800,27 @@ def _method(event: dict[str, Any]) -> str:
 
 def _json_body(event: dict[str, Any]) -> dict[str, Any]:
     body = event.get("body") or "{}"
+    if not isinstance(body, str):
+        raise ValueError("request body must be a string")
     if event.get("isBase64Encoded"):
-        import base64
-
-        body = base64.b64decode(body).decode()
+        raw = base64.b64decode(body, validate=True)
+    else:
+        raw = body.encode()
+    if len(raw) > MAX_REQUEST_BODY_BYTES:
+        raise ValueError("request body exceeded the size limit")
+    body = raw.decode()
     parsed = json.loads(body)
     if not isinstance(parsed, dict):
         raise ValueError("request body must be a JSON object")
     return parsed
+
+
+def _safe_correlation_id(value: Any, fallback: str) -> str:
+    if not isinstance(value, str) or not value or len(value) > 128:
+        return fallback
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        return fallback
+    return value
 
 
 def _response(status_code: int, body: dict[str, Any]) -> dict[str, Any]:

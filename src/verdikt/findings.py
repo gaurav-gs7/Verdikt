@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
+from .secrets import SecretBrokerError, read_aws_secret, resolve_configured_secret
+
 
 DEFAULT_FINDING_RULES = {
     "allowlist",
@@ -297,19 +299,30 @@ def _sink_from_env() -> FindingSink | None:
     base_url = os.getenv("VERDIKT_ARGUS_URL", "").strip()
     if not base_url:
         return None
-    token = os.getenv("VERDIKT_ARGUS_API_TOKEN", "") or _aws_secret(
-        os.getenv("VERDIKT_ARGUS_TOKEN_SECRET_ARN", "")
+    token = resolve_configured_secret(
+        direct_env="VERDIKT_ARGUS_API_TOKEN",
+        aws_secret_env="VERDIKT_ARGUS_TOKEN_SECRET_ARN",
+        vault_path_env="VERDIKT_ARGUS_TOKEN_VAULT_PATH",
+        json_key_env="VERDIKT_ARGUS_TOKEN_SECRET_JSON_KEY",
+        description="Argus operator-owned API token",
     )
     if not token:
         raise RuntimeError(
             "VERDIKT_ARGUS_URL requires an operator-owned VERDIKT_ARGUS_API_TOKEN "
-            "or VERDIKT_ARGUS_TOKEN_SECRET_ARN"
+            "or a configured AWS/Vault secret source"
         )
+    hmac_secret = resolve_configured_secret(
+        direct_env="VERDIKT_ARGUS_HMAC_SECRET",
+        aws_secret_env="VERDIKT_ARGUS_HMAC_SECRET_ARN",
+        vault_path_env="VERDIKT_ARGUS_HMAC_SECRET_VAULT_PATH",
+        json_key_env="VERDIKT_ARGUS_HMAC_SECRET_JSON_KEY",
+        description="Argus HMAC secret",
+    )
     return ArgusAlertmanagerSink(
         base_url,
         token,
         _positive_float_env("VERDIKT_ARGUS_TIMEOUT_SECONDS", 2.0),
-        os.getenv("VERDIKT_ARGUS_HMAC_SECRET", ""),
+        hmac_secret,
     )
 
 
@@ -382,14 +395,9 @@ def _aws_secret(secret_id: str) -> str:
     if not secret_id:
         return ""
     try:
-        import boto3
-    except ImportError as exc:  # pragma: no cover - AWS/container profile
-        raise RuntimeError("Argus Secrets Manager token requires the optional aws dependencies") from exc
-    response = boto3.client("secretsmanager").get_secret_value(SecretId=secret_id)
-    value = response.get("SecretString")
-    if not isinstance(value, str):
-        raise RuntimeError(f"AWS secret {secret_id!r} has no SecretString")
-    return value
+        return read_aws_secret(secret_id)
+    except SecretBrokerError as exc:
+        raise RuntimeError(str(exc)) from exc
 
 
 def _label(value: Any) -> str:

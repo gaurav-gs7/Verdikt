@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from verdikt.ops_runtime import VerdiktOpsRuntime
 from verdikt.real_mcp import register_tools
@@ -64,10 +65,11 @@ class VerdiktOpsRuntimeTest(unittest.TestCase):
     def test_real_runtime_opens_circuit_after_repeated_upstream_failures(self) -> None:
         runtime = self.runtime()
         try:
-            args = {"service": "payments-api", "command": "not-allowlisted"}
-            first = runtime.call_tool("platform-ops", "platform.run_diagnostic", args)
-            second = runtime.call_tool("platform-ops", "platform.run_diagnostic", args)
-            third = runtime.call_tool("platform-ops", "platform.run_diagnostic", args)
+            args = {"service": "payments-api", "command": "dependency-health"}
+            with mock.patch.object(runtime.platform, "call", side_effect=RuntimeError("backend unavailable")):
+                first = runtime.call_tool("platform-ops", "platform.run_diagnostic", args)
+                second = runtime.call_tool("platform-ops", "platform.run_diagnostic", args)
+                third = runtime.call_tool("platform-ops", "platform.run_diagnostic", args)
             self.assertFalse(first.allowed)
             self.assertFalse(second.allowed)
             self.assertFalse(third.allowed)

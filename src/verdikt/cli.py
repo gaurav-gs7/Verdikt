@@ -5,18 +5,28 @@ import json
 import os
 from pathlib import Path
 
+from .attackbench import (
+    AttackBenchError,
+    report_passes as attackbench_report_passes,
+    run_attackbench,
+)
+from .auth import AuthError
 from .backends import run_backend
-from .attackbench import AttackBenchError, report_passes, run_attackbench
 from .demo import run_demo
 from .evals import print_evals
 from .gateway import serve_gateway
 from .http_app import serve_dashboard
 from .interop import print_interop_profiles
+from .performance import (
+    PerformanceBenchmarkError,
+    report_passes as performance_report_passes,
+    run_gateway_benchmark,
+)
 from .real_mcp import serve_real_mcp
 from .runtime import VerdiktRuntime
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(os.getenv("VERDIKT_PROJECT_ROOT", str(Path(__file__).resolve().parents[2])))
 
 
 def parser() -> argparse.ArgumentParser:
@@ -76,6 +86,16 @@ def parser() -> argparse.ArgumentParser:
     attackbench.add_argument("--min-recall", type=float, default=0.0)
     attackbench.add_argument("--min-f1", type=float, default=0.0)
     attackbench.add_argument("--output", type=Path)
+    performance = subparsers.add_parser(
+        "performance",
+        help="measure full in-process Verdikt tool-call overhead and throughput",
+    )
+    performance.add_argument("--policy", type=Path, default=argparse.SUPPRESS)
+    performance.add_argument("--iterations", type=int, default=200)
+    performance.add_argument("--warmup", type=int, default=20)
+    performance.add_argument("--max-p99-ms", type=float, default=0.0)
+    performance.add_argument("--min-throughput", type=float, default=0.0)
+    performance.add_argument("--output", type=Path)
     backend = subparsers.add_parser("backend", help=argparse.SUPPRESS)
     backend.add_argument("name", choices=["platform-ops", "incident", "kubernetes"])
     return result
@@ -122,7 +142,7 @@ def main() -> None:
             args.output.write_text(rendered + "\n")
         print(rendered)
         try:
-            passed = report_passes(
+            passed = attackbench_report_passes(
                 report,
                 min_precision=args.min_precision,
                 min_recall=args.min_recall,
@@ -131,8 +151,31 @@ def main() -> None:
         except AttackBenchError as exc:
             raise SystemExit(f"attackbench: {exc}") from exc
         raise SystemExit(0 if passed else 1)
+    if args.command == "performance":
+        try:
+            report = run_gateway_benchmark(
+                args.policy,
+                iterations=args.iterations,
+                warmup=args.warmup,
+            )
+            passed = performance_report_passes(
+                report,
+                max_p99_ms=args.max_p99_ms,
+                min_throughput=args.min_throughput,
+            )
+        except (PerformanceBenchmarkError, OSError, json.JSONDecodeError) as exc:
+            raise SystemExit(f"performance: {exc}") from exc
+        rendered = json.dumps(report, indent=2)
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(rendered + "\n")
+        print(rendered)
+        raise SystemExit(0 if passed else 1)
     if args.command == "serve-real-mcp":
-        serve_real_mcp(args)
+        try:
+            serve_real_mcp(args)
+        except AuthError as exc:
+            raise SystemExit(f"serve-real-mcp: {exc}") from None
         return
     runtime = VerdiktRuntime(args.policy, args.audit_db)
     if args.command == "demo":

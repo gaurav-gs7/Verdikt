@@ -46,9 +46,9 @@ variable "app_port" {
 }
 
 variable "allowed_cidr" {
-  description = "CIDR allowed to reach the dashboard. Use your public IP /32 for demos."
+  description = "CIDR allowed to reach Verdikt. Defaults to loopback-only; set your public IP /32 for remote demos."
   type        = string
-  default     = "0.0.0.0/0"
+  default     = "127.0.0.1/32"
 
   validation {
     condition     = can(cidrhost(var.allowed_cidr, 0))

@@ -12,15 +12,16 @@ File:
 
 Runs on push and pull request:
 
-- installs the project with real MCP support
-- runs unit tests
-- runs adversarial evals
-- runs failure-mode tests
+- installs the project with real MCP, observability, authentication, Redis, AWS, test, and quality profiles
+- invokes one `scripts/run_release_tests.sh` gate for all Tier 1, Tier 2, and Tier 3 verification
+- provisions isolated Redis and Vault containers and runs the complete suite without integration skips
+- enforces 85% aggregate branch coverage and 100% coverage for secrets, audit export, Slack approval, and performance modules
+- runs adversarial evals, failure drills, MCP-AttackBench adapter checks, and guarded-call performance thresholds
+- runs pinned official Filesystem and Memory MCP interoperability checks
 - packages the serverless Lambda artifact
 - runs Terraform fmt and validate for both AWS modules
 - builds the production MCP Docker image
-- runs pinned official Filesystem and Memory MCP interoperability checks
-- uploads the sanitized interoperability evidence JSON
+- uploads sanitized coverage, attack-benchmark, performance, and interoperability evidence JSON
 
 This workflow does not create AWS resources.
 

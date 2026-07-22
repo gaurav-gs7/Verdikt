@@ -16,6 +16,15 @@
           "json_key": "api_token"
         }
       }
+    },
+    "vault-authenticated-example": {
+      "command": ["python3", "/opt/company-mcp/server.py"],
+      "env": {
+        "UPSTREAM_API_TOKEN": {
+          "from_vault": "secret/data/verdikt/company",
+          "json_key": "api_token"
+        }
+      }
     }
   }
 }

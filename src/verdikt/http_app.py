@@ -234,7 +234,13 @@ DASHBOARD_HTML = """<!doctype html>
       show(await request('/api/analyze', {method: 'POST'}));
     }
     async function approvedTokenRollback() {
-      const args = {service:'payments-api',version:'payments-api@2026.05.2'};
+      const args = {
+        service: 'payments-api',
+        version: 'payments-api@2026.05.2',
+        actor: 'interview-demo',
+        environment: 'production',
+        rollback_plan: 'verify service health and restore the previous release if errors increase'
+      };
       const approvalBody = JSON.stringify({
         actor: 'interview-demo',
         reason: 'rollback after error-rate spike',

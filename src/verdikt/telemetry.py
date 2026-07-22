@@ -31,8 +31,8 @@ class TraceSpan:
 
     def record_exception(self, exc: Exception) -> None:
         if self._span is not None:
-            self._span.record_exception(exc)
-            self._span.set_status(self._status_code("ERROR"), str(exc))
+            self._span.set_attribute("verdikt.error.type", exc.__class__.__name__)
+            self._span.set_status(self._status_code("ERROR"))
 
     def set_ok(self) -> None:
         if self._span is not None:
@@ -75,7 +75,7 @@ class Telemetry:
                 endpoint=os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://127.0.0.1:6006/v1/traces")
             )
         provider.add_span_processor(SimpleSpanProcessor(exporter))
-        self._tracer = provider.get_tracer("verdikt", "0.1.0")
+        self._tracer = provider.get_tracer("verdikt", "0.2.0")
 
     def status(self) -> dict[str, Any]:
         result = {"enabled": self._tracer is not None, "mode": self.mode}
@@ -97,7 +97,12 @@ class Telemetry:
             SpanAttributes.OPENINFERENCE_SPAN_KIND: openinference_kind,
             **(attributes or {}),
         }
-        with self._tracer.start_as_current_span(name, attributes=span_attributes) as span:
+        with self._tracer.start_as_current_span(
+            name,
+            attributes=span_attributes,
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
             wrapped = TraceSpan(span)
             try:
                 yield wrapped

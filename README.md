@@ -36,7 +36,8 @@ Verdikt demonstrates:
 - Circuit breakers for repeated upstream tool failures
 - Hash-chained and optionally HMAC-signed local audit evidence
 - Fail-closed audit signing and full-chain startup verification for production mode
-- JSONL or S3 audit shipping plus individually signed DynamoDB serverless events
+- JSONL, S3, generic HTTPS SIEM, or Splunk HEC audit shipping plus individually signed DynamoDB serverless events
+- Reusable AWS Secrets Manager and Vault KV secret brokerage across runtime credentials
 - Correlation IDs, Prometheus metrics, OpenInference/OpenTelemetry traces, and AWS X-Ray
 - Docker Compose observability stack with Prometheus, Grafana, Tempo, Jaeger, and Redis
 - Helm chart for Kubernetes deployment
@@ -44,6 +45,7 @@ Verdikt demonstrates:
 - Optional OpenInference-compatible traces exported through OpenTelemetry
 - MCP-38 coverage matrix and adversarial policy regression suite
 - MCP-AttackBench-compatible dataset adapter with per-category metrics and privacy-safe reports
+- Reproducible full-pipeline latency, overhead, throughput, and audit-integrity benchmark
 - Durable blocked-finding export that creates deduplicated incidents in Argus's RCA pipeline
 - AWS Secrets Manager, X-Ray tracing, IAM review, SLOs, runbooks, and failure-mode tests
 
@@ -61,7 +63,7 @@ flowchart LR
     Inspect -->|"safe"| Redact["Recursive redaction"]
     Redact --> Agent
     Redact --> Evidence
-    Evidence --> Sink["SQLite/JSONL/S3 or DynamoDB/CloudWatch"]
+    Evidence --> Sink["SQLite/JSONL/S3/SIEM or DynamoDB/CloudWatch"]
     Evidence --> Finding["Durable finding outbox or EventBridge"]
     Finding --> Incident["Argus incident and RCA or SQS/DLQ"]
 ```
@@ -95,12 +97,15 @@ make test
 make demo
 make eval
 make attackbench-smoke
+make performance-smoke
 make failure-test
 make interop-community
 make trace
 make observability-up
 make helm-template
 ```
+
+`make test` is the canonical release gate for all Tier 1, Tier 2, and Tier 3 work. It provisions isolated Redis and Vault containers, runs the complete unit/integration/end-to-end suite once, enforces aggregate and security-critical branch coverage, executes adversarial and failure drills, measures guarded-call performance, and verifies the pinned official Filesystem and Memory MCP servers. Existing Redis and Vault endpoints can be supplied through `VERDIKT_TEST_REDIS_URL`, `VERDIKT_TEST_VAULT_ADDR`, and `VERDIKT_TEST_VAULT_TOKEN`.
 
 Start the dashboard:
 
@@ -299,7 +304,7 @@ Production-style tools exposed by the MCP server:
 
 ## AWS Free-Tier Deployment
 
-The primary complete AWS path is Terraform-managed EC2 running the official Streamable HTTP MCP container, with ECR, IAM, Secrets Manager, CloudWatch, X-Ray, SSM Session Manager, and encrypted EBS. The Lambda/API Gateway/DynamoDB/EventBridge/SQS stack is a separate serverless control-plane lab; it exercises stronger AWS serverless skills but exposes an HTTP tool API rather than claiming to be the official MCP transport.
+The primary complete AWS path is Terraform-managed EC2 running the official Streamable HTTP MCP container, with ECR, IAM, Secrets Manager, SSM Session Manager, and encrypted EBS. The Lambda/API Gateway/DynamoDB/EventBridge/SQS stack is a separate serverless control-plane lab with CloudWatch and X-Ray; it exercises stronger AWS serverless skills but exposes an HTTP tool API rather than claiming to be the official MCP transport. The free-tier EC2 path is a restricted-CIDR lab endpoint, not a TLS-terminated public production endpoint.
 
 Start with [docs/AWS_FREE_TIER_DEPLOY.md](docs/AWS_FREE_TIER_DEPLOY.md), then use [docs/AWS_AIOPS_SKILLS.md](docs/AWS_AIOPS_SKILLS.md) to turn the work into an AIOps/LLMOps learning roadmap.
 
@@ -383,7 +388,7 @@ verdikt.call_tool                 CHAIN
 groq.incident_summary               LLM        # only created when Groq is called
 ```
 
-Arguments and outputs are redacted before they are attached to spans. The upstream MCP subprocess protocol is implemented locally for this lightweight demo, so `openinference-instrumentation-mcp` auto-instrumentation is not used. If the transport is migrated to the official MCP Python SDK, that package can be added for cross-process context propagation.
+Arguments and outputs are redacted before they are attached to spans. The remote server uses the official MCP Python SDK, while Verdikt emits explicit policy, tool, and LLM spans so security decisions have stable attributes independent of auto-instrumentation. External stdio upstreams remain separate processes and do not yet propagate trace context across that process boundary.
 
 ## Threat Model
 
@@ -405,7 +410,7 @@ Explicit gaps remain: Verdikt is an OAuth resource server, not an authorization 
 
 ## Design Notes
 
-The short design write-up is in [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md), the production roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md), the AWS learning plan is in [docs/AWS_AIOPS_SKILLS.md](docs/AWS_AIOPS_SKILLS.md), and the production operations docs are in [docs/SLO.md](docs/SLO.md), [docs/RUNBOOKS.md](docs/RUNBOOKS.md), [docs/IAM_REVIEW.md](docs/IAM_REVIEW.md), [docs/TRACING.md](docs/TRACING.md), [docs/FAILURE_TESTING.md](docs/FAILURE_TESTING.md), [docs/CICD.md](docs/CICD.md), [docs/COMMUNITY_INTEROP.md](docs/COMMUNITY_INTEROP.md), and [docs/PRODUCTION_ENHANCEMENTS.md](docs/PRODUCTION_ENHANCEMENTS.md).
+The short design write-up is in [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md), the production roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md), the AWS learning plan is in [docs/AWS_AIOPS_SKILLS.md](docs/AWS_AIOPS_SKILLS.md), and the production operations docs are in [docs/SLO.md](docs/SLO.md), [docs/RUNBOOKS.md](docs/RUNBOOKS.md), [docs/IAM_REVIEW.md](docs/IAM_REVIEW.md), [docs/TRACING.md](docs/TRACING.md), [docs/PERFORMANCE.md](docs/PERFORMANCE.md), [docs/FAILURE_TESTING.md](docs/FAILURE_TESTING.md), [docs/CICD.md](docs/CICD.md), [docs/COMMUNITY_INTEROP.md](docs/COMMUNITY_INTEROP.md), and [docs/PRODUCTION_ENHANCEMENTS.md](docs/PRODUCTION_ENHANCEMENTS.md).
 
 ## License
 

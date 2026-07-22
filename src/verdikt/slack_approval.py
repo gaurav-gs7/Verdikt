@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import os
 import sqlite3
 import threading
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .approval import ApprovalAuthority, arguments_hash
+from .secrets import resolve_configured_secret
 
 
 class SlackApprovalError(RuntimeError):
@@ -25,16 +27,30 @@ class SlackApprovalWorkflow:
     """Durable, signature-verified Slack approval workflow for exact tool arguments."""
 
     def __init__(self, path: Path, authority: ApprovalAuthority) -> None:
-        self.webhook_url = os.getenv("VERDIKT_SLACK_WEBHOOK_URL", "")
-        self.signing_secret = os.getenv("VERDIKT_SLACK_SIGNING_SECRET", "")
+        webhook_url = resolve_configured_secret(
+            direct_env="VERDIKT_SLACK_WEBHOOK_URL",
+            aws_secret_env="VERDIKT_SLACK_WEBHOOK_SECRET_ARN",
+            vault_path_env="VERDIKT_SLACK_WEBHOOK_VAULT_PATH",
+            json_key_env="VERDIKT_SLACK_WEBHOOK_SECRET_JSON_KEY",
+            description="Slack webhook URL",
+        )
+        self.webhook_url = _slack_webhook_url(webhook_url) if webhook_url else ""
+        self.signing_secret = resolve_configured_secret(
+            direct_env="VERDIKT_SLACK_SIGNING_SECRET",
+            aws_secret_env="VERDIKT_SLACK_SIGNING_SECRET_ARN",
+            vault_path_env="VERDIKT_SLACK_SIGNING_SECRET_VAULT_PATH",
+            json_key_env="VERDIKT_SLACK_SIGNING_SECRET_JSON_KEY",
+            description="Slack signing secret",
+        )
         self.approvers = {
             value.strip()
             for value in os.getenv("VERDIKT_SLACK_APPROVER_IDS", "").split(",")
             if value.strip()
         }
-        self.max_pending_per_requester = int(
-            os.getenv("VERDIKT_SLACK_MAX_PENDING_PER_REQUESTER", "5")
+        self.max_pending_per_requester = _bounded_int_env(
+            "VERDIKT_SLACK_MAX_PENDING_PER_REQUESTER", 5, minimum=1, maximum=100
         )
+        self._timeout_seconds = _positive_float_env("VERDIKT_SLACK_TIMEOUT_SECONDS", 5.0)
         self.authority = authority
         self._lock = threading.Lock()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,6 +100,16 @@ class SlackApprovalWorkflow:
                 "Slack approvals require VERDIKT_SLACK_WEBHOOK_URL, "
                 "VERDIKT_SLACK_SIGNING_SECRET, and VERDIKT_SLACK_APPROVER_IDS"
             )
+        for name, value in (
+            ("requester", requester),
+            ("reason", reason),
+            ("server", server),
+            ("tool", tool),
+        ):
+            if not value.strip():
+                raise SlackApprovalError(f"Slack approval {name} must not be empty")
+        if ttl_seconds < 60 or ttl_seconds > 3600:
+            raise SlackApprovalError("Slack approval TTL must be between 60 and 3600 seconds")
         now = int(time.time())
         request_id = str(uuid.uuid4())
         digest = arguments_hash(arguments)
@@ -174,6 +200,10 @@ class SlackApprovalWorkflow:
         return result
 
     def handle_action(self, headers: dict[str, str], body: str) -> dict[str, Any]:
+        if not self.enabled:
+            raise SlackApprovalError(
+                "Slack approvals require a webhook, signing secret, and approver IDs"
+            )
         self._verify_signature(headers, body)
         try:
             encoded_payload = urllib.parse.parse_qs(body)["payload"][0]
@@ -302,12 +332,59 @@ class SlackApprovalWorkflow:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=5) as response:
+            with urllib.request.urlopen(request, timeout=self._timeout_seconds) as response:
                 if response.status >= 300:
                     raise SlackApprovalError(f"Slack webhook returned HTTP {response.status}")
+        except urllib.error.HTTPError as exc:
+            code = exc.code
+            exc.close()
+            raise SlackApprovalError(f"Slack webhook returned HTTP {code}") from exc
         except (OSError, urllib.error.URLError) as exc:
-            raise SlackApprovalError(f"Slack approval notification failed: {exc}") from exc
+            raise SlackApprovalError("Slack approval notification endpoint is unavailable") from exc
 
 
 def _slack_escape(value: str) -> str:
     return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _slack_webhook_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise SlackApprovalError("Slack webhook URL must be an absolute HTTP(S) URL")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise SlackApprovalError(
+            "Slack webhook URL must not contain credentials, query, or fragment"
+        )
+    loopback = parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+    allow_http = os.getenv("VERDIKT_SLACK_ALLOW_INSECURE_HTTP", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if parsed.scheme == "http" and not loopback and not allow_http:
+        raise SlackApprovalError("non-loopback Slack webhook integration requires HTTPS")
+    return url
+
+
+def _bounded_int_env(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError as exc:
+        raise SlackApprovalError(
+            f"{name} must be an integer between {minimum} and {maximum}"
+        ) from exc
+    if value < minimum or value > maximum:
+        raise SlackApprovalError(
+            f"{name} must be an integer between {minimum} and {maximum}"
+        )
+    return value
+
+
+def _positive_float_env(name: str, default: float) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except ValueError as exc:
+        raise SlackApprovalError(f"{name} must be a positive finite number") from exc
+    if not math.isfinite(value) or value <= 0:
+        raise SlackApprovalError(f"{name} must be a positive finite number")
+    return value

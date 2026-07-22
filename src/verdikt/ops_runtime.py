@@ -185,10 +185,10 @@ class VerdiktOpsRuntime:
                         allowed = False
                         rule = "tool_integrity"
                         reason = str(exc)
-                    except Exception as exc:
+                    except Exception:
                         allowed = False
                         rule = "upstream_error"
-                        reason = str(exc)
+                        reason = "upstream tool execution failed"
                         self._record_failure(server, tool, reason)
             if allowed and result is not None:
                 result = self._maybe_annotate_incident(arguments, server, tool, correlation_id, decision, result)

@@ -31,13 +31,28 @@ auth:
   jwtAudience: ""
   jwtRequiredGroup: ""
   jwtJwksUrl: ""
+  resourceUri: ""
+  authorizationServer: ""
+  requiredScopes: "mcp:tools"
+  adminScope: "mcp:admin"
+  allowedOrigins: ""
 
-approvalSecret: "change-me"
+approvalSecret: ""
 
 audit:
   hmacSecret: ""
   signatureRequired: true
   verifyOnStartup: true
+  sink: none
+  sinkStrict: false
+
+siem:
+  url: ""
+  protocol: json
+  token: ""
+  hmacSecret: ""
+  timeoutSeconds: 2
+  allowInsecureHttp: false
 
 redis:
   url: ""
@@ -69,6 +84,20 @@ resources:
 
 podAnnotations: {}
 podLabels: {}
+
+podSecurityContext:
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsGroup: 10001
+  runAsNonRoot: true
+  runAsUser: 10001
 
 nodeSelector: {}
 tolerations: []

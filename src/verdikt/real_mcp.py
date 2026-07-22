@@ -230,17 +230,19 @@ def register_tools(mcp: Any, runtime: VerdiktOpsRuntime) -> None:
         return runtime.call_tool(
             "platform-ops",
             "platform.restart_deployment",
-            {
+            _operation_arguments(
+                {
                 "service": service,
                 "actor": actor,
                 "environment": environment,
                 "rollback_plan": rollback_plan,
-                "approval_token": approval_token,
-                "dry_run": dry_run,
-                "shadow_mode": shadow_mode,
-                "incident_id": incident_id,
-                "auto_create_incident": auto_create_incident,
-            },
+                },
+                approval_token=approval_token,
+                dry_run=dry_run,
+                shadow_mode=shadow_mode,
+                incident_id=incident_id,
+                auto_create_incident=auto_create_incident,
+            ),
         ).as_dict()
 
     @mcp.tool(
@@ -262,18 +264,20 @@ def register_tools(mcp: Any, runtime: VerdiktOpsRuntime) -> None:
         return runtime.call_tool(
             "platform-ops",
             "platform.rollback_deployment",
-            {
+            _operation_arguments(
+                {
                 "service": service,
                 "version": version,
                 "actor": actor,
                 "environment": environment,
                 "rollback_plan": rollback_plan,
-                "approval_token": approval_token,
-                "dry_run": dry_run,
-                "shadow_mode": shadow_mode,
-                "incident_id": incident_id,
-                "auto_create_incident": auto_create_incident,
-            },
+                },
+                approval_token=approval_token,
+                dry_run=dry_run,
+                shadow_mode=shadow_mode,
+                incident_id=incident_id,
+                auto_create_incident=auto_create_incident,
+            ),
         ).as_dict()
 
     @mcp.tool(name="kubernetes.get_pod", description="Read Kubernetes pod status through Verdikt.")
@@ -303,18 +307,20 @@ def register_tools(mcp: Any, runtime: VerdiktOpsRuntime) -> None:
         return runtime.call_tool(
             "kubernetes",
             "kubernetes.restart_pod",
-            {
+            _operation_arguments(
+                {
                 "namespace": namespace,
                 "pod": pod,
                 "actor": actor,
                 "environment": environment,
                 "rollback_plan": rollback_plan,
-                "approval_token": approval_token,
-                "dry_run": dry_run,
-                "shadow_mode": shadow_mode,
-                "incident_id": incident_id,
-                "auto_create_incident": auto_create_incident,
-            },
+                },
+                approval_token=approval_token,
+                dry_run=dry_run,
+                shadow_mode=shadow_mode,
+                incident_id=incident_id,
+                auto_create_incident=auto_create_incident,
+            ),
         ).as_dict()
 
     @mcp.tool(name="kubernetes.rollout_status", description="Read Kubernetes deployment rollout status.")
@@ -454,3 +460,26 @@ def register_tools(mcp: Any, runtime: VerdiktOpsRuntime) -> None:
             "finding_delivery": runtime.finding_delivery(),
             "recent_audit": runtime.recent_audit(limit),
         }
+
+
+def _operation_arguments(
+    required: dict[str, Any],
+    *,
+    approval_token: str,
+    dry_run: bool,
+    shadow_mode: bool,
+    incident_id: str,
+    auto_create_incident: bool,
+) -> dict[str, Any]:
+    arguments = dict(required)
+    if approval_token:
+        arguments["approval_token"] = approval_token
+    if dry_run:
+        arguments["dry_run"] = True
+    if shadow_mode:
+        arguments["shadow_mode"] = True
+    if incident_id:
+        arguments["incident_id"] = incident_id
+    if auto_create_incident:
+        arguments["auto_create_incident"] = True
+    return arguments

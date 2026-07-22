@@ -13,7 +13,7 @@ The repository does not vendor or redistribute the paper's full corpus. The bund
 | Tier 2 CI smoke profile | 8 | 1.0 | 1.0 | 1.0 | Parser, detector, metrics, threshold, and privacy regression only |
 | Full MCP-AttackBench | 70,448 expected | Not published | Not published | Not published | Run after obtaining the independently maintained corpus |
 
-CI stores the smoke JSON as the `attackbench-smoke-evidence` artifact. A full result is publishable only when the report records `sample_count: 70448` and the input digest of the acquired corpus.
+CI stores the smoke JSON inside the `verdikt-ci-evidence` artifact. A full result is publishable only when the report records `sample_count: 70448` and the input digest of the acquired corpus.
 
 ## Run It
 

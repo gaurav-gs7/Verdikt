@@ -17,7 +17,7 @@ on:
       allowed_cidr:
         description: EC2 ingress CIDR for ec2-real-mcp, for example 203.0.113.10/32
         required: false
-        default: 0.0.0.0/0
+        default: 127.0.0.1/32
 
 permissions:
   id-token: write

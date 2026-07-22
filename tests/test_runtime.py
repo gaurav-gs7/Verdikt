@@ -298,7 +298,8 @@ class RuntimeTest(unittest.TestCase):
 
         self.assertFalse(failed.allowed)
         self.assertIn("not allowlisted", failed.reason)
-        self.assertEqual(self.runtime.audit.recent()[0]["rule"], "upstream_error")
+        self.assertEqual(failed.rule, "argument_allowlist")
+        self.assertEqual(self.runtime.audit.recent()[0]["rule"], "argument_allowlist")
 
 
 if __name__ == "__main__":

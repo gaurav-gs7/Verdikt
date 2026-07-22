@@ -12,7 +12,7 @@ Recommended guardrails:
 - Use a Free Tier eligible EC2 type for your account, usually `t3.micro` for this guide.
 - Delete the stack when you are done.
 - Keep ECR images small and prune old tags.
-- Restrict `VERDIKT_ALLOWED_CIDR` to your public IP `/32` instead of `0.0.0.0/0`.
+- Set `VERDIKT_ALLOWED_CIDR` to your public IP `/32`; the templates otherwise fail closed to loopback-only access.
 - Create a billing budget and alert in the AWS Billing console before experimenting.
 
 ## Architecture

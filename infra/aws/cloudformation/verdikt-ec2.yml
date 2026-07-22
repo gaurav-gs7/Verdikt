@@ -25,8 +25,8 @@ Parameters:
     Default: 8080
   AllowedCidr:
     Type: String
-    Default: 0.0.0.0/0
-    Description: Restrict this to your public IP /32 for safer demos.
+    Default: 127.0.0.1/32
+    Description: Loopback-only by default. Set your public IP /32 for remote demos.
   ContainerMode:
     Type: String
     Default: real-mcp
@@ -36,14 +36,19 @@ Parameters:
     Description: Run the production MCP Streamable HTTP server or the dashboard.
   HttpBearerToken:
     Type: String
-    Default: ""
     NoEcho: true
-    Description: Optional bearer token for the real MCP HTTP server.
+    MinLength: 16
+    Description: Required bearer token for the real MCP HTTP server.
   ApprovalSecret:
     Type: String
-    Default: local-dev-approval-secret-change-me
     NoEcho: true
+    MinLength: 16
     Description: HMAC secret for Verdikt signed approval tokens.
+  AuditHmacSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: Independent HMAC secret for tamper-evident audit events.
 
 Resources:
   HttpBearerSecret:
@@ -57,6 +62,12 @@ Resources:
     Properties:
       Description: HMAC secret for Verdikt signed approval tokens.
       SecretString: !Ref ApprovalSecret
+
+  AuditHmacSecretValue:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Independent HMAC secret for Verdikt audit evidence.
+      SecretString: !Ref AuditHmacSecret
 
   InstanceRole:
     Type: AWS::IAM::Role
@@ -92,6 +103,7 @@ Resources:
                 Resource:
                   - !Ref HttpBearerSecret
                   - !Ref ApprovalSecretValue
+                  - !Ref AuditHmacSecretValue
 
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -108,9 +120,6 @@ Resources:
           FromPort: !Ref AppPort
           ToPort: !Ref AppPort
           CidrIp: !Ref AllowedCidr
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
           Value: !Sub ${AppName}-sg
@@ -141,13 +150,13 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          set -euxo pipefail
+          set -euo pipefail
 
           dnf update -y
           dnf install -y docker awscli
           systemctl enable --now docker
 
-          mkdir -p /opt/verdikt/data
+          install -d -o 10001 -g 10001 /opt/verdikt/data
           aws ecr get-login-password --region ${AWS::Region} \
             | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
 
@@ -156,6 +165,7 @@ Resources:
 
           HTTP_BEARER_TOKEN="$(aws secretsmanager get-secret-value --region ${AWS::Region} --secret-id ${HttpBearerSecret} --query SecretString --output text)"
           APPROVAL_SECRET="$(aws secretsmanager get-secret-value --region ${AWS::Region} --secret-id ${ApprovalSecretValue} --query SecretString --output text)"
+          AUDIT_HMAC_SECRET="$(aws secretsmanager get-secret-value --region ${AWS::Region} --secret-id ${AuditHmacSecretValue} --query SecretString --output text)"
 
           docker run -d \
             --name verdikt \
@@ -166,6 +176,9 @@ Resources:
             -e VERDIKT_TELEMETRY=disabled \
             -e VERDIKT_HTTP_BEARER_TOKEN="$HTTP_BEARER_TOKEN" \
             -e VERDIKT_APPROVAL_SECRET="$APPROVAL_SECRET" \
+            -e VERDIKT_AUDIT_HMAC_SECRET="$AUDIT_HMAC_SECRET" \
+            -e VERDIKT_AUDIT_SIGNATURE_REQUIRED=true \
+            -e VERDIKT_AUDIT_VERIFY_ON_STARTUP=true \
             ${ImageUri}
 
 Outputs:

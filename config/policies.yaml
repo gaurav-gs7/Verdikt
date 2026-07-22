@@ -16,6 +16,11 @@
     "oauth_token",
     "upstream_token"
   ],
+  "allowed_argument_values": {
+    "platform.run_diagnostic": {
+      "command": ["dependency-health", "error-rate", "latency-summary"]
+    }
+  },
   "inbound_content_inspection": {
     "mode": "fail_closed",
     "max_scan_bytes": 262144

@@ -9,7 +9,10 @@
 - Tool metadata inspection, pinning, shadow detection, and result quarantine.
 - Versioned official Filesystem, Memory, and GitHub MCP interoperability profiles.
 - External subprocess environment isolation with explicit credential brokering.
-- Hash-chained local audit plus JSONL/S3 shipping and signed DynamoDB events.
+- AWS Secrets Manager and Vault KV secret brokerage across runtime credentials.
+- Hash-chained local audit plus JSONL/S3/SIEM shipping and signed DynamoDB events.
+- Generic HTTPS and Splunk HEC audit contracts with optional HMAC signing.
+- Reproducible guarded-call latency and throughput evidence in CI.
 
 ## Priority 1: Identity And Approval
 

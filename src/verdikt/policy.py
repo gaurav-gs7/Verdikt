@@ -97,6 +97,15 @@ class PolicyEngine:
             serialized = json.dumps(arguments, sort_keys=True)
             if any(pattern.search(serialized) for pattern in self._blocked):
                 return self._decision(False, "arguments matched a blocked security pattern", "blocked_pattern", risk)
+            invalid_argument = self._find_disallowed_argument_value(tool, arguments)
+            if invalid_argument:
+                return self._decision(
+                    False,
+                    f"argument {invalid_argument!r} is not allowlisted for {tool!r}",
+                    "argument_allowlist",
+                    risk,
+                    action="DENY",
+                )
             if self._dry_run_requested(tool, arguments):
                 return self._decision(
                     True,
@@ -269,6 +278,17 @@ class PolicyEngine:
                 nested = self._find_forbidden_argument_key(item)
                 if nested:
                     return nested
+        return None
+
+    def _find_disallowed_argument_value(
+        self, tool: str, arguments: dict[str, Any]
+    ) -> str | None:
+        constraints = self.config.get("allowed_argument_values", {}).get(tool, {})
+        for key, allowed_values in constraints.items():
+            if key not in arguments:
+                continue
+            if arguments[key] not in allowed_values:
+                return str(key)
         return None
 
     @staticmethod

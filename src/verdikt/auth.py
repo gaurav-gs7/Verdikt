@@ -11,6 +11,8 @@ import time
 import urllib.parse
 from typing import Any
 
+from .secrets import resolve_configured_secret
+
 
 class AuthError(ValueError):
     pass
@@ -36,8 +38,20 @@ class AuthConfig:
     @classmethod
     def from_env(cls) -> "AuthConfig":
         return cls(
-            bearer_token=os.getenv("VERDIKT_HTTP_BEARER_TOKEN", ""),
-            jwt_hs256_secret=os.getenv("VERDIKT_JWT_HS256_SECRET", ""),
+            bearer_token=resolve_configured_secret(
+                direct_env="VERDIKT_HTTP_BEARER_TOKEN",
+                aws_secret_env="VERDIKT_HTTP_BEARER_TOKEN_SECRET_ARN",
+                vault_path_env="VERDIKT_HTTP_BEARER_TOKEN_VAULT_PATH",
+                json_key_env="VERDIKT_HTTP_BEARER_TOKEN_SECRET_JSON_KEY",
+                description="HTTP bearer token",
+            ),
+            jwt_hs256_secret=resolve_configured_secret(
+                direct_env="VERDIKT_JWT_HS256_SECRET",
+                aws_secret_env="VERDIKT_JWT_HS256_SECRET_ARN",
+                vault_path_env="VERDIKT_JWT_HS256_SECRET_VAULT_PATH",
+                json_key_env="VERDIKT_JWT_HS256_SECRET_JSON_KEY",
+                description="JWT HS256 secret",
+            ),
             jwt_issuer=os.getenv("VERDIKT_JWT_ISSUER", ""),
             jwt_audience=os.getenv("VERDIKT_JWT_AUDIENCE", ""),
             jwt_required_group=os.getenv("VERDIKT_JWT_REQUIRED_GROUP", ""),

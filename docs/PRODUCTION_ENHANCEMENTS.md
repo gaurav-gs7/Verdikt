@@ -67,6 +67,23 @@ or:
 {"UPSTREAM_TOKEN": {"from_aws_secret": "verdikt/upstreams/github", "json_key": "token"}}
 ```
 
+or a Vault KV v1/v2 path:
+
+```json
+{"UPSTREAM_TOKEN": {"from_vault": "secret/data/verdikt/github", "json_key": "token"}}
+```
+
+The same broker resolves HTTP bearer, HS256 JWT, approval-signing, audit-signing, Slack, Argus, and SIEM credentials. Exactly one direct, AWS, or Vault source may be configured for each secret; ambiguous configuration fails startup. Vault requires HTTPS except on loopback, bounds responses to 1 MiB, supports namespaces, and normalizes errors without exposing response bodies or tokens.
+
+```bash
+export VERDIKT_VAULT_ADDR="https://vault.example.com"
+export VERDIKT_VAULT_TOKEN_SECRET_ARN="arn:aws:secretsmanager:us-east-1:123456789012:secret:vault-client-token"
+export VERDIKT_SLACK_SIGNING_SECRET_VAULT_PATH="secret/data/verdikt/slack"
+export VERDIKT_SLACK_SIGNING_SECRET_JSON_KEY="signing_secret"
+```
+
+`VERDIKT_VAULT_TOKEN` can be injected by a Vault Agent or workload runtime instead of being stored directly in shell history. For local-only Vault development, `VERDIKT_VAULT_ALLOW_INSECURE_HTTP=true` permits non-loopback HTTP deliberately; production should keep it unset.
+
 Local source installs that use Secrets Manager or the S3 audit sink need the AWS profile:
 
 ```bash
@@ -93,6 +110,8 @@ export VERDIKT_SLACK_SIGNING_SECRET="..."
 export VERDIKT_SLACK_APPROVER_IDS="U012345,U067890"
 export VERDIKT_SLACK_MAX_PENDING_PER_REQUESTER=5
 ```
+
+The webhook and signing secret can instead use `VERDIKT_SLACK_WEBHOOK_SECRET_ARN`, `VERDIKT_SLACK_SIGNING_SECRET_ARN`, or the corresponding `*_VAULT_PATH` settings described above.
 
 The agent calls `verdikt.request_approval`, an authorized engineer chooses Approve or Deny, and the original authenticated requester polls `verdikt.approval_status`. Callback signatures and timestamps are verified, identical pending requests are deduplicated, and the issued token remains bound to the exact server, tool, argument digest, requester, and expiry. Direct token issuance through the remote tool is disabled unless `VERDIKT_ALLOW_DIRECT_APPROVAL=true` is deliberately set.
 
@@ -127,6 +146,19 @@ export VERDIKT_AUDIT_SINK_STRICT=true
 ```
 
 The serverless deployment stores individually HMAC-signed envelopes in DynamoDB and reports verification of recent events in `/state`. S3 Object Lock is not provisioned by this repository, so the S3 sink is centrally durable but not automatically immutable.
+
+Or a generic HTTPS SIEM/webhook receiver:
+
+```bash
+export VERDIKT_AUDIT_SINK=siem
+export VERDIKT_SIEM_URL="https://siem.example.com/api/events"
+export VERDIKT_SIEM_TOKEN_SECRET_ARN="arn:aws:secretsmanager:us-east-1:123456789012:secret:verdikt-siem"
+export VERDIKT_SIEM_HMAC_SECRET_VAULT_PATH="secret/data/verdikt/siem"
+export VERDIKT_SIEM_HMAC_SECRET_JSON_KEY="hmac"
+export VERDIKT_AUDIT_SINK_STRICT=true
+```
+
+For Splunk HTTP Event Collector, set `VERDIKT_SIEM_PROTOCOL=splunk_hec` and point `VERDIKT_SIEM_URL` at `/services/collector/event`. Generic JSON uses bearer authentication; Splunk uses HEC authentication. Both contracts include a SHA-256 body digest, and `VERDIKT_SIEM_HMAC_SECRET` or its brokered equivalent adds `X-Verdikt-Signature-256`. Non-loopback HTTP, URL credentials, query tokens, malformed protocols, and invalid timeouts fail closed.
 
 Interview angle:
 
@@ -185,6 +217,20 @@ make attackbench-smoke
 
 The smoke corpus proves parsing, classification, metrics, thresholds, and report privacy; it is deliberately not advertised as a score on the 70,448-sample independent corpus. See [ATTACKBENCH.md](ATTACKBENCH.md) for the full-corpus command, field mapping, CI evidence, and interpretation limits.
 
+## Performance Evidence
+
+Run the full in-process guarded-call benchmark:
+
+```bash
+make performance-smoke
+./scripts/run_performance_benchmark.sh build/performance-local.json \
+  --iterations 500 --warmup 50
+```
+
+It measures a direct built-in backend baseline and the complete Verdikt pipeline: policy and authorization, risk scoring, local rate limiting, metadata pin verification, tool execution, inbound scanning, redaction, signed hash-chain SQLite audit, and metrics. HTTP/JWT, remote MCP latency, Redis, SIEM, Argus, S3, and OTLP are deliberately excluded and named in the report.
+
+The dated local evidence and interpretation rules are in [PERFORMANCE.md](PERFORMANCE.md). CI runs a low-flake smoke gate and uploads the JSON report; do not present the local result as a networked or multi-replica production SLA.
+
 ## Observability Stack
 
 Run the local observability stack:
@@ -219,9 +265,12 @@ helm upgrade --install verdikt ./charts/verdikt \
   --set image.repository=<your-image-repo> \
   --set image.tag=<tag> \
   --set auth.bearerToken=<token> \
+  --set auth.resourceUri=https://verdikt.example.com/mcp \
   --set approvalSecret=<approval-secret> \
   --set audit.hmacSecret=<independent-audit-secret>
 ```
+
+The chart fails during rendering when authentication, approval signing, audit signing, or the public MCP resource URI is missing. JWT/JWKS deployments additionally require `auth.jwtIssuer`, `auth.jwtAudience`, and `auth.authorizationServer` instead of `auth.bearerToken`.
 
 Useful production values:
 

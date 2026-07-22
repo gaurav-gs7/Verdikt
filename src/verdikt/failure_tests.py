@@ -101,12 +101,23 @@ def _kill_switch_case(runtime: VerdiktOpsRuntime) -> tuple[bool, str]:
 
 
 def _circuit_breaker_case(runtime: VerdiktOpsRuntime) -> tuple[bool, str]:
-    args = {"service": "payments-api", "command": "not-allowlisted"}
-    runtime.call_tool("platform-ops", "platform.run_diagnostic", args)
-    runtime.call_tool("platform-ops", "platform.run_diagnostic", args)
-    result = runtime.call_tool("platform-ops", "platform.run_diagnostic", args)
-    observed = f"allowed={result.allowed} reason={result.reason}"
-    return (not result.allowed and "circuit breaker" in result.reason, observed)
+    args = {"service": "payments-api", "command": "dependency-health"}
+    original_call = runtime.platform.call
+
+    def unavailable(tool: str, arguments: dict[str, Any]) -> Any:
+        if tool == "platform.run_diagnostic":
+            raise RuntimeError("injected upstream outage")
+        return original_call(tool, arguments)
+
+    runtime.platform.call = unavailable
+    try:
+        runtime.call_tool("platform-ops", "platform.run_diagnostic", args)
+        runtime.call_tool("platform-ops", "platform.run_diagnostic", args)
+        result = runtime.call_tool("platform-ops", "platform.run_diagnostic", args)
+        observed = f"allowed={result.allowed} reason={result.reason}"
+        return (not result.allowed and "circuit breaker" in result.reason, observed)
+    finally:
+        runtime.platform.call = original_call
 
 
 def _redaction_case(runtime: VerdiktOpsRuntime) -> tuple[bool, str]:

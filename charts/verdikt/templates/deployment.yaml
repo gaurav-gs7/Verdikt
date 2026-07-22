@@ -23,11 +23,16 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       serviceAccountName: {{ include "verdikt.serviceAccountName" . }}
       containers:
         - name: verdikt
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           ports:
             - name: http
               containerPort: 8080
@@ -59,6 +64,10 @@ spec:
               value: {{ .Values.audit.signatureRequired | quote }}
             - name: VERDIKT_AUDIT_VERIFY_ON_STARTUP
               value: {{ .Values.audit.verifyOnStartup | quote }}
+            - name: VERDIKT_AUDIT_SINK
+              value: {{ .Values.audit.sink | quote }}
+            - name: VERDIKT_AUDIT_SINK_STRICT
+              value: {{ .Values.audit.sinkStrict | quote }}
             - name: VERDIKT_JWT_ISSUER
               value: {{ .Values.auth.jwtIssuer | quote }}
             - name: VERDIKT_JWT_AUDIENCE
@@ -67,6 +76,16 @@ spec:
               value: {{ .Values.auth.jwtRequiredGroup | quote }}
             - name: VERDIKT_JWT_JWKS_URL
               value: {{ .Values.auth.jwtJwksUrl | quote }}
+            - name: VERDIKT_RESOURCE_URI
+              value: {{ .Values.auth.resourceUri | quote }}
+            - name: VERDIKT_AUTHORIZATION_SERVER
+              value: {{ .Values.auth.authorizationServer | quote }}
+            - name: VERDIKT_REQUIRED_SCOPES
+              value: {{ .Values.auth.requiredScopes | quote }}
+            - name: VERDIKT_ADMIN_SCOPE
+              value: {{ .Values.auth.adminScope | quote }}
+            - name: VERDIKT_ALLOWED_ORIGINS
+              value: {{ .Values.auth.allowedOrigins | quote }}
             - name: VERDIKT_REDIS_URL
               value: {{ .Values.redis.url | quote }}
             - name: VERDIKT_REDIS_REQUIRED
@@ -85,6 +104,24 @@ spec:
                   key: VERDIKT_ARGUS_HMAC_SECRET
             - name: VERDIKT_ARGUS_ALLOW_INSECURE_HTTP
               value: {{ .Values.argus.allowInsecureHttp | quote }}
+            - name: VERDIKT_SIEM_URL
+              value: {{ .Values.siem.url | quote }}
+            - name: VERDIKT_SIEM_PROTOCOL
+              value: {{ .Values.siem.protocol | quote }}
+            - name: VERDIKT_SIEM_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "verdikt.fullname" . }}
+                  key: VERDIKT_SIEM_TOKEN
+            - name: VERDIKT_SIEM_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "verdikt.fullname" . }}
+                  key: VERDIKT_SIEM_HMAC_SECRET
+            - name: VERDIKT_SIEM_TIMEOUT_SECONDS
+              value: {{ .Values.siem.timeoutSeconds | quote }}
+            - name: VERDIKT_SIEM_ALLOW_INSECURE_HTTP
+              value: {{ .Values.siem.allowInsecureHttp | quote }}
             - name: VERDIKT_TELEMETRY
               value: {{ .Values.telemetry.mode | quote }}
             - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
@@ -101,15 +138,29 @@ spec:
               port: http
             initialDelaySeconds: 15
             periodSeconds: 20
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- if .Values.persistence.enabled }}
           volumeMounts:
             - name: data
               mountPath: /app/data
+            - name: tmp
+              mountPath: /tmp
+          {{- else }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           {{- end }}
-      {{- if .Values.persistence.enabled }}
       volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- if .Values.persistence.enabled }}
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "verdikt.fullname" . }}

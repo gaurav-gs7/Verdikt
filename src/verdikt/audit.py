@@ -11,16 +11,24 @@ from pathlib import Path
 from typing import Any
 
 from .audit_sink import build_audit_sink
+from .secrets import resolve_configured_secret
 
 
 class AuditStore:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        self._signing_secret = os.getenv("VERDIKT_AUDIT_HMAC_SECRET", "")
+        self._signing_secret = resolve_configured_secret(
+            direct_env="VERDIKT_AUDIT_HMAC_SECRET",
+            aws_secret_env="VERDIKT_AUDIT_HMAC_SECRET_ARN",
+            vault_path_env="VERDIKT_AUDIT_HMAC_SECRET_VAULT_PATH",
+            json_key_env="VERDIKT_AUDIT_HMAC_SECRET_JSON_KEY",
+            description="audit HMAC secret",
+        )
         self._signature_required = _enabled("VERDIKT_AUDIT_SIGNATURE_REQUIRED")
         if self._signature_required and not self._signing_secret:
             raise RuntimeError(
-                "VERDIKT_AUDIT_SIGNATURE_REQUIRED=true requires VERDIKT_AUDIT_HMAC_SECRET"
+                "VERDIKT_AUDIT_SIGNATURE_REQUIRED=true requires VERDIKT_AUDIT_HMAC_SECRET "
+                "or a brokered audit HMAC secret"
             )
         self._connection = sqlite3.connect(path, check_same_thread=False)
         self._connection.row_factory = sqlite3.Row
@@ -88,7 +96,7 @@ class AuditStore:
     ) -> None:
         with self._lock:
             created_at = dt.datetime.now(dt.UTC).isoformat()
-            rounded_duration = round(duration_ms, 3)
+            rounded_duration = round(float(duration_ms), 3)
             event = {
                 "created_at": created_at,
                 "correlation_id": correlation_id,

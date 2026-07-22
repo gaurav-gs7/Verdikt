@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .secrets import SecretBrokerError, read_aws_secret, read_vault_secret
+
 
 SENSITIVE_ENV_MARKERS = ("TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY", "PRIVATE_KEY")
 
@@ -66,7 +68,8 @@ def resolve_operator_environment(server: str, configured: Any) -> dict[str, str]
         if isinstance(source, str):
             if any(marker in target_name.upper() for marker in SENSITIVE_ENV_MARKERS):
                 raise UpstreamConfigError(
-                    f"upstream {server!r} credential {target_name!r} must use from_env or from_aws_secret"
+                    f"upstream {server!r} credential {target_name!r} must use "
+                    "from_env or from_aws_secret or from_vault"
                 )
             resolved[target_name] = source
             continue
@@ -74,40 +77,58 @@ def resolve_operator_environment(server: str, configured: Any) -> dict[str, str]
             raise UpstreamConfigError(
                 f"upstream {server!r} environment value for {target_name!r} must be a string or source object"
             )
-        if "from_env" in source:
-            source_name = str(source["from_env"])
+        source_types = [
+            key for key in ("from_env", "from_aws_secret", "from_vault") if key in source
+        ]
+        unknown_keys = set(source) - set(source_types) - {"json_key"}
+        if len(source_types) != 1 or unknown_keys:
+            raise UpstreamConfigError(
+                f"upstream {server!r} environment source for {target_name!r} must contain "
+                "exactly one supported source and optional json_key"
+            )
+        source_type = source_types[0]
+        source_value = source[source_type]
+        if not isinstance(source_value, str) or not source_value.strip():
+            raise UpstreamConfigError(
+                f"upstream {server!r} environment source for {target_name!r} must be a non-empty string"
+            )
+        json_key = source.get("json_key", "")
+        if not isinstance(json_key, str):
+            raise UpstreamConfigError(
+                f"upstream {server!r} json_key for {target_name!r} must be a string"
+            )
+        if source_type == "from_env":
+            if json_key:
+                raise UpstreamConfigError(
+                    f"upstream {server!r} from_env source for {target_name!r} cannot use json_key"
+                )
+            source_name = source_value
             value = os.getenv(source_name)
             if value is None:
                 raise UpstreamConfigError(
                     f"upstream {server!r} requires missing operator environment variable {source_name!r}"
                 )
             resolved[target_name] = value
-        elif "from_aws_secret" in source:
+        elif source_type == "from_aws_secret":
             resolved[target_name] = _read_aws_secret(
-                str(source["from_aws_secret"]),
-                str(source.get("json_key", "")),
+                source_value,
+                json_key,
             )
         else:
-            raise UpstreamConfigError(
-                f"upstream {server!r} environment source for {target_name!r} is unsupported"
-            )
+            try:
+                resolved[target_name] = read_vault_secret(
+                    source_value,
+                    json_key,
+                )
+            except SecretBrokerError as exc:
+                raise UpstreamConfigError(
+                    f"upstream {server!r} could not resolve Vault credential {target_name!r}: {exc}"
+                ) from exc
     return resolved
 
 
 def _read_aws_secret(secret_id: str, json_key: str) -> str:
     try:
-        import boto3
-    except ImportError as exc:  # pragma: no cover - exercised in AWS/container profile
-        raise UpstreamConfigError("AWS Secrets Manager upstream credentials require boto3") from exc
-    response = boto3.client("secretsmanager").get_secret_value(SecretId=secret_id)
-    value = response.get("SecretString")
-    if not isinstance(value, str):
-        raise UpstreamConfigError(f"AWS secret {secret_id!r} has no SecretString")
-    if not json_key:
-        return value
-    try:
-        parsed = json.loads(value)
-        selected = parsed[json_key]
-    except (json.JSONDecodeError, KeyError, TypeError) as exc:
-        raise UpstreamConfigError(f"AWS secret {secret_id!r} does not contain JSON key {json_key!r}") from exc
-    return str(selected)
+        return read_aws_secret(secret_id, json_key)
+    except SecretBrokerError as exc:
+        raise UpstreamConfigError(str(exc)) from exc

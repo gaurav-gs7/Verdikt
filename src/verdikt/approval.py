@@ -4,10 +4,11 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import time
 from dataclasses import dataclass
 from typing import Any
+
+from .secrets import resolve_configured_secret
 
 
 TOKEN_VERSION = "verdikt-approval-v1"
@@ -32,7 +33,16 @@ class ApprovalAuthority:
     """Issues and verifies HMAC approval tokens for destructive tool calls."""
 
     def __init__(self, secret: str | None = None) -> None:
-        self.secret = (secret or os.getenv("VERDIKT_APPROVAL_SECRET") or DEFAULT_DEV_SECRET).encode()
+        configured = ""
+        if secret is None:
+            configured = resolve_configured_secret(
+                direct_env="VERDIKT_APPROVAL_SECRET",
+                aws_secret_env="VERDIKT_APPROVAL_SECRET_ARN",
+                vault_path_env="VERDIKT_APPROVAL_SECRET_VAULT_PATH",
+                json_key_env="VERDIKT_APPROVAL_SECRET_JSON_KEY",
+                description="approval signing secret",
+            )
+        self.secret = (secret or configured or DEFAULT_DEV_SECRET).encode()
 
     def issue(
         self,

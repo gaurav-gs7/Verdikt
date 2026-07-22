@@ -47,4 +47,4 @@ Those are deliberately separate. Traces may be sampled; audits should not be.
 
 ## Production Upgrade Path
 
-The current project includes a real MCP Streamable HTTP server, a guarded Kubernetes adapter, a free-tier friendly EC2/Docker deployment, and a serverless AIOps control-plane variant. The next real upgrades are Cognito/OIDC identity, Redis-backed distributed rate limits for the EC2 path, OPA/Cedar policies, deeper Prometheus/Kubernetes integrations, append-only audit export, and signed release provenance.
+The current project includes a real MCP Streamable HTTP server, a guarded Kubernetes adapter, Redis-backed distributed rate limits, central audit export, a free-tier friendly EC2/Docker deployment, and a serverless AIOps control-plane variant. The next real upgrades are managed OIDC identity, TLS termination for the EC2 endpoint, OPA/Cedar policies, deeper Prometheus/Kubernetes integrations, and signed release provenance.

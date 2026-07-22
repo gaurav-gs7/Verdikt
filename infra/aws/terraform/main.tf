@@ -202,7 +202,7 @@ dnf update -y
 dnf install -y docker awscli
 systemctl enable --now docker
 
-mkdir -p /opt/verdikt/data
+install -d -o 10001 -g 10001 /opt/verdikt/data
 
 aws ecr get-login-password --region ${var.aws_region} \
   | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com
