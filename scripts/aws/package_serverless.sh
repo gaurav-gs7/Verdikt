@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build/serverless"
-ZIP_PATH="${ROOT_DIR}/build/gatetrace-serverless.zip"
+ZIP_PATH="${ROOT_DIR}/build/verdikt-serverless.zip"
 
 if ! command -v zip >/dev/null 2>&1; then
   echo "zip is required to package the serverless Lambda artifact" >&2
@@ -13,7 +13,7 @@ fi
 mkdir -p "${BUILD_DIR}" "${ROOT_DIR}/build"
 find "${BUILD_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
-cp -R "${ROOT_DIR}/src/mcp_guard" "${BUILD_DIR}/mcp_guard"
+cp -R "${ROOT_DIR}/src/verdikt" "${BUILD_DIR}/verdikt"
 cp -R "${ROOT_DIR}/config" "${BUILD_DIR}/config"
 find "${BUILD_DIR}" -type d -name "__pycache__" -prune -exec rm -rf {} +
 find "${BUILD_DIR}" -type f -name "*.pyc" -delete

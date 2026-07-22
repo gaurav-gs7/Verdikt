@@ -2,7 +2,7 @@
 
 ## Supported boundary
 
-MCP-Guard is a reference implementation, not a hosted security service. The
+Verdikt is a reference implementation, not a hosted security service. The
 supported local boundary is:
 
 - JSON-RPC MCP over stdio between the client, guard, and demo upstream servers.
@@ -10,7 +10,7 @@ supported local boundary is:
 - A bearer-authenticated dashboard API when binding outside loopback.
 
 Do not expose the dashboard on a non-loopback interface without setting a strong,
-random `MCP_GUARD_API_TOKEN`. The built-in SQLite audit store, in-process rate
+random `VERDIKT_API_TOKEN`. The built-in SQLite audit store, in-process rate
 limits, and local approval key are single-node controls; production deployments
 need external secrets, distributed state, and an append-only audit destination.
 

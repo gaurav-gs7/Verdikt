@@ -10,8 +10,8 @@ import urllib.parse
 from pathlib import Path
 from unittest.mock import patch
 
-from mcp_guard.approval import ApprovalAuthority
-from mcp_guard.slack_approval import SlackApprovalError, SlackApprovalWorkflow
+from verdikt.approval import ApprovalAuthority
+from verdikt.slack_approval import SlackApprovalError, SlackApprovalWorkflow
 
 
 class SlackApprovalWorkflowTest(unittest.TestCase):
@@ -20,9 +20,9 @@ class SlackApprovalWorkflowTest(unittest.TestCase):
         self.environment = patch.dict(
             "os.environ",
             {
-                "MCP_GUARD_SLACK_WEBHOOK_URL": "https://hooks.slack.test/services/example",
-                "MCP_GUARD_SLACK_SIGNING_SECRET": "slack-signing-secret",
-                "MCP_GUARD_SLACK_APPROVER_IDS": "U-ONCALL",
+                "VERDIKT_SLACK_WEBHOOK_URL": "https://hooks.slack.test/services/example",
+                "VERDIKT_SLACK_SIGNING_SECRET": "slack-signing-secret",
+                "VERDIKT_SLACK_APPROVER_IDS": "U-ONCALL",
             },
         )
         self.environment.start()

@@ -1,5 +1,5 @@
 variable "aws_region" {
-  description = "AWS region for the serverless GateTrace MCP deployment."
+  description = "AWS region for the serverless Verdikt deployment."
   type        = string
   default     = "us-east-1"
 }
@@ -7,26 +7,12 @@ variable "aws_region" {
 variable "app_name" {
   description = "Name prefix for all serverless resources."
   type        = string
-  default     = "gatetrace-serverless"
+  default     = "verdikt-serverless"
 }
 
 variable "lambda_zip_path" {
   description = "Path to the packaged Lambda artifact produced by scripts/aws/package_serverless.sh."
   type        = string
-}
-
-variable "api_token" {
-  description = "Bearer token required by API Gateway callers. Replace this for real deployments."
-  type        = string
-  default     = "local-demo-token-change-me"
-  sensitive   = true
-}
-
-variable "approval_secret" {
-  description = "HMAC secret for signed approval tokens. Use Secrets Manager for stricter production."
-  type        = string
-  default     = "local-dev-approval-secret-change-me"
-  sensitive   = true
 }
 
 variable "lambda_runtime" {

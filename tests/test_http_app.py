@@ -6,7 +6,7 @@ import unittest
 import urllib.error
 import urllib.request
 
-from mcp_guard.http_app import DashboardServer
+from verdikt.http_app import DashboardServer
 
 
 class _Audit:
@@ -20,7 +20,7 @@ class _Runtime:
 
 class DashboardAuthenticationTest(unittest.TestCase):
     def test_non_loopback_binding_requires_token(self) -> None:
-        with self.assertRaisesRegex(ValueError, "MCP_GUARD_API_TOKEN"):
+        with self.assertRaisesRegex(ValueError, "VERDIKT_API_TOKEN"):
             DashboardServer(("0.0.0.0", 0), _Runtime())  # type: ignore[arg-type]
 
     def test_health_is_public_but_api_requires_bearer_token(self) -> None:

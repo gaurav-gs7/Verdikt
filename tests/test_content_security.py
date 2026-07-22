@@ -8,16 +8,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from mcp_guard.audit import AuditStore
-from mcp_guard.cli import PROJECT_ROOT
-from mcp_guard.content_guard import ContentGuard
-from mcp_guard.runtime import MCPGuardRuntime
-from mcp_guard.tool_integrity import (
+from verdikt.audit import AuditStore
+from verdikt.cli import PROJECT_ROOT
+from verdikt.content_guard import ContentGuard
+from verdikt.runtime import VerdiktRuntime
+from verdikt.tool_integrity import (
     ToolIntegrityError,
     ToolIntegrityStore,
     verify_unique_tool_names,
 )
-from mcp_guard.upstreams import UpstreamConfigError, load_upstream_servers
+from verdikt.upstreams import UpstreamConfigError, load_upstream_servers
 
 
 class ContentGuardTest(unittest.TestCase):
@@ -85,7 +85,7 @@ class ToolIntegrityTest(unittest.TestCase):
 
     def test_policy_blocks_direct_prompt_injection_in_arguments(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            runtime = MCPGuardRuntime(
+            runtime = VerdiktRuntime(
                 PROJECT_ROOT / "config" / "policies.yaml",
                 Path(directory) / "audit.db",
             )
@@ -106,7 +106,7 @@ class ToolIntegrityTest(unittest.TestCase):
 
 
 class ExternalMCPIntegrationTest(unittest.TestCase):
-    def _runtime(self, directory: str, mode: str) -> MCPGuardRuntime:
+    def _runtime(self, directory: str, mode: str) -> VerdiktRuntime:
         source_policy = json.loads((PROJECT_ROOT / "config" / "policies.yaml").read_text())
         source_policy["allowed_tools"]["independent"] = ["external.fetch_issue"]
         source_policy["actor_permissions"]["anonymous"].append("external.fetch_issue")
@@ -126,13 +126,13 @@ class ExternalMCPIntegrationTest(unittest.TestCase):
         self.environment = patch.dict(
             os.environ,
             {
-                "MCP_GUARD_UPSTREAM_CONFIG": str(upstream_path),
-                "MCP_GUARD_TOOL_PIN_MODE": "enforce",
+                "VERDIKT_UPSTREAM_CONFIG": str(upstream_path),
+                "VERDIKT_TOOL_PIN_MODE": "enforce",
             },
         )
         self.environment.start()
         self.addCleanup(self.environment.stop)
-        return MCPGuardRuntime(policy_path, Path(directory) / "audit.db")
+        return VerdiktRuntime(policy_path, Path(directory) / "audit.db")
 
     def test_proxies_safe_result_from_independent_mcp_process(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -185,7 +185,7 @@ class ExternalMCPIntegrationTest(unittest.TestCase):
 class AuditIntegrityTest(unittest.TestCase):
     def test_hash_chain_verifies_and_detects_tampering(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            with patch.dict(os.environ, {"MCP_GUARD_AUDIT_HMAC_SECRET": "audit-test-secret"}):
+            with patch.dict(os.environ, {"VERDIKT_AUDIT_HMAC_SECRET": "audit-test-secret"}):
                 store = AuditStore(Path(directory) / "audit.db")
                 self.addCleanup(store.close)
                 for index in range(2):

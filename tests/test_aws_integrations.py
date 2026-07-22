@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from mcp_guard.audit_sink import S3AuditSink
-from mcp_guard.upstreams import load_upstream_servers
+from verdikt.audit_sink import S3AuditSink
+from verdikt.upstreams import load_upstream_servers
 
 
 class FakeAWSClient:
@@ -39,7 +39,7 @@ class AWSIntegrationTest(unittest.TestCase):
                                 "command": ["github-mcp-server"],
                                 "env": {
                                     "GITHUB_TOKEN": {
-                                        "from_aws_secret": "gatetrace/upstreams/github",
+                                        "from_aws_secret": "verdikt/upstreams/github",
                                         "json_key": "token",
                                     }
                                 },
@@ -53,7 +53,7 @@ class AWSIntegrationTest(unittest.TestCase):
                 servers = load_upstream_servers(path)
 
         self.assertEqual(servers[0].environment["GITHUB_TOKEN"], "operator-managed-token")
-        self.assertEqual(client.calls, [{"SecretId": "gatetrace/upstreams/github"}])
+        self.assertEqual(client.calls, [{"SecretId": "verdikt/upstreams/github"}])
 
     def test_s3_sink_uploads_encrypted_redacted_envelope(self) -> None:
         client = FakeAWSClient()
@@ -65,12 +65,12 @@ class AWSIntegrationTest(unittest.TestCase):
         }
 
         with patch.dict(sys.modules, {"boto3": boto3}):
-            sink = S3AuditSink("audit-bucket", "gatetrace/audit")
+            sink = S3AuditSink("audit-bucket", "verdikt/audit")
             sink.write(event)
 
         request = client.calls[0]
         self.assertEqual(request["Bucket"], "audit-bucket")
-        self.assertTrue(str(request["Key"]).startswith("gatetrace/audit/date=2026-07-20/"))
+        self.assertTrue(str(request["Key"]).startswith("verdikt/audit/date=2026-07-20/"))
         self.assertEqual(request["ContentType"], "application/json")
         self.assertEqual(request["ServerSideEncryption"], "AES256")
         self.assertEqual(json.loads(request["Body"]), event)

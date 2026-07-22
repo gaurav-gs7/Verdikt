@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from mcp_guard.telemetry import Telemetry
+from verdikt.telemetry import Telemetry
 
 
 class TelemetryTest(unittest.TestCase):

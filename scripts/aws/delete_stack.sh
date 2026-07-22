@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/../legacy_env.sh"
 
 REGION="${AWS_REGION:-us-east-1}"
-STACK_NAME="${MCP_GUARD_STACK_NAME:-gatetrace-free-tier}"
+STACK_NAME="${VERDIKT_STACK_NAME:-verdikt-free-tier}"
 
 ./scripts/aws/preflight_identity.sh >/dev/null
 

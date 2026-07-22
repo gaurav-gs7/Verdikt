@@ -1,6 +1,6 @@
 # CI/CD
 
-GateTrace MCP uses GitHub Actions for validation and optional AWS deployment.
+Verdikt uses GitHub Actions for validation and optional AWS deployment.
 
 ## CI Workflow
 
@@ -44,11 +44,13 @@ Required GitHub secrets:
 - `AWS_DEPLOY_ROLE_ARN`
   - IAM role assumed through GitHub OIDC.
   - Do not use long-lived AWS access keys.
-- `MCP_GUARD_APPROVAL_SECRET`
+- `VERDIKT_APPROVAL_SECRET`
   - HMAC secret for signed approval tokens.
-- `MCP_GUARD_API_TOKEN`
+- `VERDIKT_AUDIT_HMAC_SECRET`
+  - Independent HMAC secret for tamper-evident audit records.
+- `VERDIKT_API_TOKEN`
   - Serverless API bearer token.
-- `MCP_GUARD_HTTP_BEARER_TOKEN`
+- `VERDIKT_HTTP_BEARER_TOKEN`
   - Real MCP Streamable HTTP bearer token.
 
 The deploy scripts write these values into AWS Secrets Manager after Terraform creates the secret containers. The Terraform state owns secret ARNs and IAM wiring, but not the live secret strings.

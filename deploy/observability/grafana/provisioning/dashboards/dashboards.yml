@@ -1,9 +1,9 @@
 apiVersion: 1
 
 providers:
-  - name: GateTrace MCP
+  - name: Verdikt
     orgId: 1
-    folder: GateTrace MCP
+    folder: Verdikt
     type: file
     disableDeletion: true
     updateIntervalSeconds: 30

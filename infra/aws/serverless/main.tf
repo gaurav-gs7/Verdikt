@@ -10,14 +10,14 @@ data "aws_caller_identity" "current" {}
 
 locals {
   common_tags = {
-    Project     = "GateTrace MCP"
+    Project     = "Verdikt"
     ManagedBy   = "Terraform"
     Environment = "serverless-demo"
   }
 
   gateway_function_name = "${var.app_name}-gateway"
   tool_function_name    = "${var.app_name}-mock-tool"
-  metric_namespace      = "GateTrace/Serverless"
+  metric_namespace      = "Verdikt/Serverless"
 }
 
 resource "aws_dynamodb_table" "state" {
@@ -92,13 +92,19 @@ resource "aws_dynamodb_table_item" "default_policy" {
 
 resource "aws_secretsmanager_secret" "api_token" {
   name                    = "${var.app_name}/api-token"
-  description             = "Bearer token for GateTrace MCP serverless API callers."
+  description             = "Bearer token for Verdikt serverless API callers."
   recovery_window_in_days = 0
 }
 
 resource "aws_secretsmanager_secret" "approval_secret" {
   name                    = "${var.app_name}/approval-secret"
-  description             = "HMAC secret for GateTrace MCP signed approval tokens."
+  description             = "HMAC secret for Verdikt signed approval tokens."
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret" "audit_hmac_secret" {
+  name                    = "${var.app_name}/audit-hmac-secret"
+  description             = "Independent HMAC secret for tamper-evident serverless audit records."
   recovery_window_in_days = 0
 }
 
@@ -127,7 +133,7 @@ resource "aws_cloudwatch_event_rule" "remediation_findings" {
   event_bus_name = aws_cloudwatch_event_bus.bus.name
 
   event_pattern = jsonencode({
-    source        = ["gatetrace.mcp"]
+    source        = ["verdikt.mcp"]
     "detail-type" = ["RemediationFinding"]
   })
 }
@@ -135,7 +141,7 @@ resource "aws_cloudwatch_event_rule" "remediation_findings" {
 resource "aws_cloudwatch_event_target" "findings_queue" {
   rule           = aws_cloudwatch_event_rule.remediation_findings.name
   event_bus_name = aws_cloudwatch_event_bus.bus.name
-  target_id      = "gatetrace-findings"
+  target_id      = "verdikt-findings"
   arn            = aws_sqs_queue.findings.arn
 }
 
@@ -270,7 +276,8 @@ resource "aws_iam_role_policy" "gateway_runtime" {
         ]
         Resource = [
           aws_secretsmanager_secret.api_token.arn,
-          aws_secretsmanager_secret.approval_secret.arn
+          aws_secretsmanager_secret.approval_secret.arn,
+          aws_secretsmanager_secret.audit_hmac_secret.arn
         ]
       }
     ]
@@ -310,7 +317,7 @@ resource "aws_cloudwatch_log_group" "tool" {
 resource "aws_lambda_function" "tool" {
   function_name                  = local.tool_function_name
   role                           = aws_iam_role.tool_lambda.arn
-  handler                        = "mcp_guard.serverless.tool_handler"
+  handler                        = "verdikt.serverless.tool_handler"
   runtime                        = var.lambda_runtime
   filename                       = var.lambda_zip_path
   source_code_hash               = filebase64sha256(var.lambda_zip_path)
@@ -340,7 +347,7 @@ resource "aws_lambda_function" "tool" {
 resource "aws_lambda_function" "gateway" {
   function_name                  = local.gateway_function_name
   role                           = aws_iam_role.gateway_lambda.arn
-  handler                        = "mcp_guard.serverless.gateway_handler"
+  handler                        = "verdikt.serverless.gateway_handler"
   runtime                        = var.lambda_runtime
   filename                       = var.lambda_zip_path
   source_code_hash               = filebase64sha256(var.lambda_zip_path)
@@ -354,13 +361,15 @@ resource "aws_lambda_function" "gateway" {
 
   environment {
     variables = {
-      AUDIT_TABLE_NAME               = aws_dynamodb_table.audit.name
-      AWS_XRAY_CONTEXT_MISSING       = "LOG_ERROR"
-      EVENT_BUS_NAME                 = aws_cloudwatch_event_bus.bus.name
-      MCP_GUARD_API_TOKEN_SECRET_ARN = aws_secretsmanager_secret.api_token.arn
-      MCP_GUARD_APPROVAL_SECRET_ARN  = aws_secretsmanager_secret.approval_secret.arn
-      STATE_TABLE_NAME               = aws_dynamodb_table.state.name
-      TOOL_FUNCTION_NAME             = aws_lambda_function.tool.function_name
+      AUDIT_TABLE_NAME                 = aws_dynamodb_table.audit.name
+      AWS_XRAY_CONTEXT_MISSING         = "LOG_ERROR"
+      EVENT_BUS_NAME                   = aws_cloudwatch_event_bus.bus.name
+      VERDIKT_API_TOKEN_SECRET_ARN     = aws_secretsmanager_secret.api_token.arn
+      VERDIKT_APPROVAL_SECRET_ARN      = aws_secretsmanager_secret.approval_secret.arn
+      VERDIKT_AUDIT_HMAC_SECRET_ARN    = aws_secretsmanager_secret.audit_hmac_secret.arn
+      VERDIKT_AUDIT_SIGNATURE_REQUIRED = "true"
+      STATE_TABLE_NAME                 = aws_dynamodb_table.state.name
+      TOOL_FUNCTION_NAME               = aws_lambda_function.tool.function_name
     }
   }
 
@@ -441,6 +450,18 @@ resource "aws_cloudwatch_metric_alarm" "high_risk_allowed" {
   treat_missing_data  = "notBreaching"
 }
 
+resource "aws_cloudwatch_metric_alarm" "finding_publish_failures" {
+  alarm_name          = "${var.app_name}-finding-publish-failures"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "FindingPublishFailures"
+  namespace           = local.metric_namespace
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+}
+
 resource "aws_cloudwatch_dashboard" "ops" {
   dashboard_name = "${var.app_name}-ops"
 
@@ -453,14 +474,15 @@ resource "aws_cloudwatch_dashboard" "ops" {
         width  = 12
         height = 6
         properties = {
-          title   = "GateTrace MCP Decisions"
+          title   = "Verdikt Decisions"
           region  = var.aws_region
           view    = "timeSeries"
           stacked = false
           metrics = [
             [local.metric_namespace, "AllowedCalls"],
             [".", "BlockedCalls"],
-            [".", "HighRiskAllowedCalls"]
+            [".", "HighRiskAllowedCalls"],
+            [".", "FindingPublishFailures"]
           ]
         }
       },

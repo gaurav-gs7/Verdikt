@@ -39,7 +39,7 @@ output "findings_queue_url" {
 }
 
 output "cloudwatch_dashboard_name" {
-  description = "CloudWatch dashboard for GateTrace MCP serverless operations."
+  description = "CloudWatch dashboard for Verdikt serverless operations."
   value       = aws_cloudwatch_dashboard.ops.dashboard_name
 }
 
@@ -51,4 +51,9 @@ output "api_token_secret_arn" {
 output "approval_secret_arn" {
   description = "Secrets Manager ARN storing the approval-token HMAC secret."
   value       = aws_secretsmanager_secret.approval_secret.arn
+}
+
+output "audit_hmac_secret_arn" {
+  description = "Secrets Manager ARN storing the independent audit HMAC secret."
+  value       = aws_secretsmanager_secret.audit_hmac_secret.arn
 }

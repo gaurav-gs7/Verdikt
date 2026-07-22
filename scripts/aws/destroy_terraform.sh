@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/../legacy_env.sh"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TF_DIR="${ROOT_DIR}/infra/aws/terraform"
 
 REGION="${AWS_REGION:-us-east-1}"
-APP_NAME="${MCP_GUARD_TF_APP_NAME:-gatetrace-mcp-tf}"
-REPOSITORY="${MCP_GUARD_TF_ECR_REPOSITORY:-gatetrace-mcp}"
-TAG="${MCP_GUARD_IMAGE_TAG:-latest}"
-INSTANCE_TYPE="${MCP_GUARD_INSTANCE_TYPE:-t3.micro}"
-AMI_SSM_PARAMETER="${MCP_GUARD_AMI_SSM_PARAMETER:-/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}"
-ALLOWED_CIDR="${MCP_GUARD_ALLOWED_CIDR:-0.0.0.0/0}"
-CONTAINER_MODE="${MCP_GUARD_MODE:-real-mcp}"
-HTTP_BEARER_TOKEN="${MCP_GUARD_HTTP_BEARER_TOKEN:-}"
-APPROVAL_SECRET="${MCP_GUARD_APPROVAL_SECRET:-local-dev-approval-secret-change-me}"
+APP_NAME="${VERDIKT_TF_APP_NAME:-verdikt-tf}"
+REPOSITORY="${VERDIKT_TF_ECR_REPOSITORY:-verdikt}"
+TAG="${VERDIKT_IMAGE_TAG:-latest}"
+INSTANCE_TYPE="${VERDIKT_INSTANCE_TYPE:-t3.micro}"
+AMI_SSM_PARAMETER="${VERDIKT_AMI_SSM_PARAMETER:-/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}"
+ALLOWED_CIDR="${VERDIKT_ALLOWED_CIDR:-0.0.0.0/0}"
+CONTAINER_MODE="${VERDIKT_MODE:-real-mcp}"
+HTTP_BEARER_TOKEN="${VERDIKT_HTTP_BEARER_TOKEN:-}"
+APPROVAL_SECRET="${VERDIKT_APPROVAL_SECRET:-local-dev-approval-secret-change-me}"
 
 "${ROOT_DIR}/scripts/aws/preflight_identity.sh" >/dev/null
 

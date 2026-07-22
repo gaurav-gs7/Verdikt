@@ -1,6 +1,6 @@
 aws_region      = "us-east-1"
-app_name        = "gatetrace-mcp-tf"
-repository_name = "gatetrace-mcp"
+app_name        = "verdikt-tf"
+repository_name = "verdikt"
 image_tag       = "latest"
 instance_type   = "t3.micro"
 allowed_cidr    = "203.0.113.10/32"

@@ -1,6 +1,6 @@
 # Community MCP Interoperability
 
-GateTrace MCP includes a versioned harness for proving its gateway controls against independently maintained MCP servers. It does not treat a synthetic in-repository fixture as third-party evidence.
+Verdikt includes a versioned harness for proving its gateway controls against independently maintained MCP servers. It does not treat a synthetic in-repository fixture as third-party evidence.
 
 ## Pinned Profiles
 
@@ -21,7 +21,7 @@ For each profile, the harness:
 3. Discovers the complete paginated tool catalog and rejects duplicate tool names.
 4. Scans all tool metadata and creates a SHA-256 pin.
 5. Lists tools again and verifies that the definition has not drifted.
-6. Reconnects through `GuardedOpsRuntime`, where allowlist, risk, rate-limit, redaction, tracing, and audit controls are active.
+6. Reconnects through `VerdiktOpsRuntime`, where allowlist, risk, rate-limit, redaction, tracing, and audit controls are active.
 7. Executes one read-only safe call and scans the complete response before returning it.
 8. Verifies the tamper-evident audit chain.
 

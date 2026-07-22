@@ -25,7 +25,7 @@ data "aws_ssm_parameter" "latest_ami" {
 
 locals {
   common_tags = {
-    Project     = "GateTrace MCP"
+    Project     = "Verdikt"
     ManagedBy   = "Terraform"
     Environment = "demo"
   }
@@ -76,7 +76,13 @@ resource "aws_secretsmanager_secret" "http_bearer_token" {
 
 resource "aws_secretsmanager_secret" "approval_secret" {
   name                    = "${var.app_name}/approval-secret"
-  description             = "HMAC secret for GateTrace MCP signed approval tokens."
+  description             = "HMAC secret for Verdikt signed approval tokens."
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret" "audit_hmac_secret" {
+  name                    = "${var.app_name}/audit-hmac-secret"
+  description             = "Independent HMAC secret for Verdikt audit evidence."
   recovery_window_in_days = 0
 }
 
@@ -132,7 +138,8 @@ resource "aws_iam_role_policy" "ecr_pull" {
         ]
         Resource = [
           aws_secretsmanager_secret.http_bearer_token.arn,
-          aws_secretsmanager_secret.approval_secret.arn
+          aws_secretsmanager_secret.approval_secret.arn,
+          aws_secretsmanager_secret.audit_hmac_secret.arn
         ]
       }
     ]
@@ -146,11 +153,11 @@ resource "aws_iam_instance_profile" "instance" {
 
 resource "aws_security_group" "app" {
   name        = "${var.app_name}-sg"
-  description = "Allow HTTP access to GateTrace MCP"
+  description = "Allow HTTP access to Verdikt"
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
-    description = "GateTrace MCP dashboard"
+    description = "Verdikt dashboard"
     from_port   = var.app_port
     to_port     = var.app_port
     protocol    = "tcp"
@@ -189,32 +196,36 @@ resource "aws_instance" "app" {
 
   user_data = <<-USERDATA
 #!/bin/bash
-set -euxo pipefail
+set -euo pipefail
 
 dnf update -y
 dnf install -y docker awscli
 systemctl enable --now docker
 
-mkdir -p /opt/gatetrace-mcp/data
+mkdir -p /opt/verdikt/data
 
 aws ecr get-login-password --region ${var.aws_region} \
   | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com
 
 docker pull ${local.image_uri}
-docker rm -f gatetrace-mcp || true
+docker rm -f verdikt || true
 
 HTTP_BEARER_TOKEN="$(aws secretsmanager get-secret-value --region ${var.aws_region} --secret-id ${aws_secretsmanager_secret.http_bearer_token.arn} --query SecretString --output text)"
 APPROVAL_SECRET="$(aws secretsmanager get-secret-value --region ${var.aws_region} --secret-id ${aws_secretsmanager_secret.approval_secret.arn} --query SecretString --output text)"
+AUDIT_HMAC_SECRET="$(aws secretsmanager get-secret-value --region ${var.aws_region} --secret-id ${aws_secretsmanager_secret.audit_hmac_secret.arn} --query SecretString --output text)"
 
 docker run -d \
-  --name gatetrace-mcp \
+  --name verdikt \
   --restart unless-stopped \
   -p ${var.app_port}:8080 \
-  -v /opt/gatetrace-mcp/data:/app/data \
-  -e MCP_GUARD_MODE=${var.container_mode} \
-  -e MCP_GUARD_TELEMETRY=${var.telemetry_mode} \
-  -e MCP_GUARD_HTTP_BEARER_TOKEN="$HTTP_BEARER_TOKEN" \
-  -e MCP_GUARD_APPROVAL_SECRET="$APPROVAL_SECRET" \
+  -v /opt/verdikt/data:/app/data \
+  -e VERDIKT_MODE=${var.container_mode} \
+  -e VERDIKT_TELEMETRY=${var.telemetry_mode} \
+  -e VERDIKT_HTTP_BEARER_TOKEN="$HTTP_BEARER_TOKEN" \
+  -e VERDIKT_APPROVAL_SECRET="$APPROVAL_SECRET" \
+  -e VERDIKT_AUDIT_HMAC_SECRET="$AUDIT_HMAC_SECRET" \
+  -e VERDIKT_AUDIT_SIGNATURE_REQUIRED=true \
+  -e VERDIKT_AUDIT_VERIFY_ON_STARTUP=true \
   ${local.image_uri}
   USERDATA
 
@@ -226,6 +237,7 @@ docker run -d \
     aws_ecr_lifecycle_policy.app,
     aws_secretsmanager_secret.http_bearer_token,
     aws_secretsmanager_secret.approval_secret,
+    aws_secretsmanager_secret.audit_hmac_secret,
     aws_iam_role_policy.ecr_pull,
     aws_iam_role_policy_attachment.ssm
   ]

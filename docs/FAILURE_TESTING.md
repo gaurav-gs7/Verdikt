@@ -1,6 +1,6 @@
 # Failure Testing
 
-GateTrace MCP includes a failure-mode harness so safety controls can be tested without waiting for real incidents.
+Verdikt includes a failure-mode harness so safety controls can be tested without waiting for real incidents.
 
 Run:
 

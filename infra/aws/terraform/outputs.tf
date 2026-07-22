@@ -19,7 +19,7 @@ output "public_dns_name" {
 }
 
 output "dashboard_url" {
-  description = "GateTrace MCP service URL. In real-mcp mode, use /mcp for MCP clients and /healthz for health checks."
+  description = "Verdikt service URL. In real-mcp mode, use /mcp for MCP clients and /healthz for health checks."
   value       = "http://${aws_instance.app.public_dns}:${var.app_port}"
 }
 
@@ -41,4 +41,9 @@ output "http_bearer_token_secret_arn" {
 output "approval_secret_arn" {
   description = "Secrets Manager ARN storing the approval-token HMAC secret."
   value       = aws_secretsmanager_secret.approval_secret.arn
+}
+
+output "audit_hmac_secret_arn" {
+  description = "Secrets Manager ARN storing the audit-evidence HMAC secret."
+  value       = aws_secretsmanager_secret.audit_hmac_secret.arn
 }

@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mcp_guard.cli import PROJECT_ROOT
-from mcp_guard.interop import load_interop_profiles, run_interop_profiles
+from verdikt.cli import PROJECT_ROOT
+from verdikt.interop import load_interop_profiles, run_interop_profiles
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "external_mcp_server.py"

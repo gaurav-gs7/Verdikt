@@ -1,4 +1,4 @@
-# GateTrace MCP Runbooks
+# Verdikt Runbooks
 
 These runbooks cover the main failure modes for the real MCP server and AWS serverless control plane.
 
@@ -20,16 +20,16 @@ Triage:
 AWS checks:
 
 ```bash
-aws logs tail /aws/lambda/mcp-guard-serverless-gateway --since 30m
-aws dynamodb scan --table-name mcp-guard-serverless-audit --limit 20
+aws logs tail /aws/lambda/verdikt-serverless-gateway --since 30m
+aws dynamodb scan --table-name verdikt-serverless-audit --limit 20
 aws sqs receive-message --queue-url <findings_queue_url> --max-number-of-messages 10
 ```
 
 Actions:
 
 - confirm whether calls are malicious, misconfigured, or expected policy denials
-- if a tool is being abused, disable it with `guard.set_tool_enabled`
-- if a server is unsafe, disable it with `guard.set_server_enabled`
+- if a tool is being abused, disable it with `verdikt.set_tool_enabled`
+- if a server is unsafe, disable it with `verdikt.set_server_enabled`
 - preserve audit evidence before changing policy
 
 ## Runbook: High-Risk Action Approved
@@ -56,7 +56,7 @@ Actions:
 Signal:
 
 - metric `CircuitBreakerOpen`
-- `guard.runtime_state` shows open circuit
+- `verdikt.runtime_state` shows open circuit
 
 Triage:
 
@@ -78,7 +78,7 @@ Checks:
 ```bash
 aws ssm start-session --target <instance-id>
 sudo docker ps
-sudo docker logs mcp-guard --tail 100
+sudo docker logs verdikt --tail 100
 curl -s http://127.0.0.1:8080/healthz
 ```
 

@@ -4,8 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mcp_guard.ops_runtime import GuardedOpsRuntime
-from mcp_guard.request_context import bind_authenticated_subject, reset_authenticated_subject
+from verdikt.ops_runtime import VerdiktOpsRuntime
+from verdikt.real_mcp import register_tools
+from verdikt.request_context import bind_authenticated_subject, reset_authenticated_subject
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -13,16 +14,16 @@ POLICY = PROJECT_ROOT / "config" / "policies.yaml"
 ROLLBACK_PLAN = "verify rollout health and restore previous release if errors increase"
 
 
-class GuardedOpsRuntimeTest(unittest.TestCase):
+class VerdiktOpsRuntimeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def runtime(self) -> GuardedOpsRuntime:
+    def runtime(self) -> VerdiktOpsRuntime:
         db = Path(self.temp_dir.name) / "audit.db"
-        return GuardedOpsRuntime(POLICY, db, circuit_failure_threshold=2, circuit_cooldown_seconds=60)
+        return VerdiktOpsRuntime(POLICY, db, circuit_failure_threshold=2, circuit_cooldown_seconds=60)
 
     def test_real_runtime_allows_health_and_audits_call(self) -> None:
         runtime = self.runtime()
@@ -142,6 +143,27 @@ class GuardedOpsRuntimeTest(unittest.TestCase):
             self.assertEqual(result.rule, "identity_mismatch")
         finally:
             reset_authenticated_subject(context_token)
+            runtime.close()
+
+    def test_control_plane_state_exposes_rate_limiter_mode(self) -> None:
+        class FakeMCP:
+            def __init__(self) -> None:
+                self.tools: dict[str, object] = {}
+
+            def tool(self, *, name: str, description: str):
+                def register(function: object) -> object:
+                    self.tools[name] = function
+                    return function
+
+                return register
+
+        runtime = self.runtime()
+        mcp = FakeMCP()
+        try:
+            register_tools(mcp, runtime)
+            state = mcp.tools["verdikt.runtime_state"]()  # type: ignore[operator]
+            self.assertEqual(state["rate_limiter"], {"mode": "local"})
+        finally:
             runtime.close()
 
 

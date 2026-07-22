@@ -1,7 +1,6 @@
 aws_region      = "us-east-1"
-app_name        = "gatetrace-serverless"
-lambda_zip_path = "../../../build/gatetrace-serverless.zip"
+app_name        = "verdikt-serverless"
+lambda_zip_path = "../../../build/verdikt-serverless.zip"
 
-# Replace both values before sharing a public API URL.
-api_token       = "replace-me-with-a-long-random-token"
-approval_secret = "replace-me-with-a-long-random-secret"
+# Secret values are supplied to scripts/aws/deploy_serverless.sh through environment
+# variables and written with AWS CLI so they are not recorded in Terraform state.

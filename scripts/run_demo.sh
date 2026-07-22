@@ -2,4 +2,4 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-PYTHONPATH=src exec ./scripts/python.sh -m mcp_guard.cli demo "$@"
+PYTHONPATH=src exec ./scripts/python.sh -m verdikt.cli demo "$@"

@@ -2,8 +2,8 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
-  - job_name: gatetrace-mcp
+  - job_name: verdikt
     metrics_path: /metrics
     bearer_token: local-dev-token
     static_configs:
-      - targets: ["gatetrace-mcp:8080"]
+      - targets: ["verdikt:8080"]

@@ -1,0 +1,79 @@
+replicaCount: 1
+
+image:
+  repository: verdikt
+  tag: local
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  name: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: verdikt.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+auth:
+  bearerToken: ""
+  jwtHs256Secret: ""
+  jwtIssuer: ""
+  jwtAudience: ""
+  jwtRequiredGroup: ""
+  jwtJwksUrl: ""
+
+approvalSecret: "change-me"
+
+audit:
+  hmacSecret: ""
+  signatureRequired: true
+  verifyOnStartup: true
+
+redis:
+  url: ""
+  required: false
+
+argus:
+  url: ""
+  apiToken: ""
+  hmacSecret: ""
+  allowInsecureHttp: false
+
+telemetry:
+  mode: disabled
+  otlpEndpoint: ""
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  storageClass: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+podAnnotations: {}
+podLabels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+serviceMonitor:
+  enabled: false
+  interval: 15s

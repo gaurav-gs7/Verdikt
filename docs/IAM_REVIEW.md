@@ -7,7 +7,7 @@ This document explains why each AWS permission exists. It is useful for intervie
 Role:
 
 ```text
-mcp-guard-tf-ec2-role-<region>
+verdikt-tf-ec2-role-<region>
 ```
 
 Permissions:
@@ -20,7 +20,7 @@ Permissions:
 - `ecr:BatchCheckLayerAvailability`
 - `ecr:BatchGetImage`
 - `ecr:GetDownloadUrlForLayer`
-  - Scoped to the GateTrace MCP ECR repository ARN.
+  - Scoped to the Verdikt ECR repository ARN.
   - Required to pull the container image.
 - `secretsmanager:GetSecretValue`
   - Scoped to the HTTP bearer token and approval secret ARNs.
@@ -49,9 +49,9 @@ Gateway Lambda role:
 - `dynamodb:GetItem`, `PutItem`, `Query`, `Scan`, `UpdateItem`
   - Scoped to state and audit tables.
 - `events:PutEvents`
-  - Scoped to the GateTrace MCP EventBridge bus.
+  - Scoped to the Verdikt EventBridge bus.
 - `cloudwatch:PutMetricData`
-  - Restricted to namespace `MCPGuard/Serverless`.
+  - Restricted to namespace `Verdikt/Serverless`.
 - `secretsmanager:GetSecretValue`
   - Scoped to API token and approval secret.
 - `AWSLambdaBasicExecutionRole`

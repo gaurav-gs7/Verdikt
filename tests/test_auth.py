@@ -7,9 +7,9 @@ import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from mcp_guard.auth import AuthConfig, AuthError, Authenticator, create_hs256_jwt
-from mcp_guard.real_mcp import _AuthMiddleware
-from mcp_guard.request_context import (
+from verdikt.auth import AuthConfig, AuthError, Authenticator, create_hs256_jwt
+from verdikt.real_mcp import _AuthMiddleware
+from verdikt.request_context import (
     bind_authenticated_subject,
     is_control_plane_admin,
     reset_authenticated_subject,
@@ -59,7 +59,7 @@ class AuthenticatorTest(unittest.TestCase):
         claims = {
             "sub": "sre-oncall",
             "iss": "https://issuer.example.test",
-            "aud": "gatetrace-mcp",
+            "aud": "verdikt",
             "exp": now + 300,
             "scope": "mcp:tools",
         }
@@ -68,7 +68,7 @@ class AuthenticatorTest(unittest.TestCase):
             AuthConfig(
                 jwt_jwks_url=f"http://127.0.0.1:{server.server_port}/jwks.json",
                 jwt_issuer="https://issuer.example.test",
-                jwt_audience="gatetrace-mcp",
+                jwt_audience="verdikt",
             )
         )
 
@@ -90,7 +90,7 @@ class AuthenticatorTest(unittest.TestCase):
             {
                 "sub": "sre-oncall",
                 "iss": "https://issuer.example.test",
-                "aud": "mcp-guard",
+                "aud": "verdikt",
                 "exp": int(time.time()) + 300,
                 "groups": ["sre"],
                 "scope": "mcp:tools",
@@ -101,7 +101,7 @@ class AuthenticatorTest(unittest.TestCase):
             AuthConfig(
                 jwt_hs256_secret=secret,
                 jwt_issuer="https://issuer.example.test",
-                jwt_audience="mcp-guard",
+                jwt_audience="verdikt",
                 jwt_required_group="sre",
             )
         )
@@ -109,7 +109,7 @@ class AuthenticatorTest(unittest.TestCase):
         result = authenticator.authenticate(f"Bearer {token}")
 
         self.assertEqual(result.subject, "sre-oncall")
-        self.assertEqual(result.claims["aud"], "mcp-guard")
+        self.assertEqual(result.claims["aud"], "verdikt")
 
     def test_hs256_jwt_rejects_wrong_group(self) -> None:
         secret = "unit-test-jwt-secret"
@@ -138,11 +138,11 @@ class AuthenticatorTest(unittest.TestCase):
     def test_jwt_rejects_missing_required_scope(self) -> None:
         secret = "unit-test-jwt-secret"
         token = create_hs256_jwt(
-            {"sub": "sre-oncall", "aud": "mcp-guard", "exp": int(time.time()) + 300},
+            {"sub": "sre-oncall", "aud": "verdikt", "exp": int(time.time()) + 300},
             secret,
         )
         authenticator = Authenticator(
-            AuthConfig(jwt_hs256_secret=secret, jwt_audience="mcp-guard")
+            AuthConfig(jwt_hs256_secret=secret, jwt_audience="verdikt")
         )
 
         with self.assertRaisesRegex(AuthError, "missing required scopes"):
@@ -174,21 +174,21 @@ class AuthenticatorTest(unittest.TestCase):
         config = AuthConfig(required_scopes=("mcp:tools", "logs:read"))
 
         challenge = config.bearer_challenge(
-            "https://guard.example.test/.well-known/oauth-protected-resource"
+            "https://verdikt.example.test/.well-known/oauth-protected-resource"
         )
 
         self.assertEqual(
             challenge,
-            'Bearer resource_metadata="https://guard.example.test/.well-known/oauth-protected-resource", '
+            'Bearer resource_metadata="https://verdikt.example.test/.well-known/oauth-protected-resource", '
             'scope="mcp:tools logs:read"',
         )
 
     def test_metadata_url_is_derived_from_resource_origin(self) -> None:
-        config = AuthConfig(resource_uri="https://guard.example.test/custom/mcp?tenant=platform")
+        config = AuthConfig(resource_uri="https://verdikt.example.test/custom/mcp?tenant=platform")
 
         self.assertEqual(
             config.protected_resource_metadata_url(),
-            "https://guard.example.test/.well-known/oauth-protected-resource",
+            "https://verdikt.example.test/.well-known/oauth-protected-resource",
         )
 
     def test_resource_uri_must_be_absolute(self) -> None:
@@ -196,13 +196,13 @@ class AuthenticatorTest(unittest.TestCase):
             AuthConfig(resource_uri="https:///mcp").validate_for_remote_server()
 
     def test_origin_validation_uses_resource_origin_or_explicit_allowlist(self) -> None:
-        default_config = AuthConfig(resource_uri="https://guard.example.test/mcp")
+        default_config = AuthConfig(resource_uri="https://verdikt.example.test/mcp")
         allowlisted_config = AuthConfig(
-            resource_uri="https://guard.example.test/mcp",
+            resource_uri="https://verdikt.example.test/mcp",
             allowed_origins=("https://console.example.test",),
         )
 
-        self.assertTrue(default_config.origin_allowed("https://guard.example.test"))
+        self.assertTrue(default_config.origin_allowed("https://verdikt.example.test"))
         self.assertFalse(default_config.origin_allowed("https://attacker.example.test"))
         self.assertTrue(allowlisted_config.origin_allowed("https://console.example.test/"))
         self.assertFalse(allowlisted_config.origin_allowed("null"))
@@ -211,8 +211,8 @@ class AuthenticatorTest(unittest.TestCase):
         config = AuthConfig(
             jwt_jwks_url="http://issuer.example.test/jwks.json",
             jwt_issuer="https://issuer.example.test",
-            jwt_audience="https://guard.example.test/mcp",
-            resource_uri="https://guard.example.test/mcp",
+            jwt_audience="https://verdikt.example.test/mcp",
+            resource_uri="https://verdikt.example.test/mcp",
             authorization_server="https://issuer.example.test",
         )
 
@@ -222,11 +222,11 @@ class AuthenticatorTest(unittest.TestCase):
     def test_jwt_requires_expiry(self) -> None:
         secret = "unit-test-jwt-secret"
         token = create_hs256_jwt(
-            {"sub": "sre-oncall", "aud": "mcp-guard", "scope": "mcp:tools"},
+            {"sub": "sre-oncall", "aud": "verdikt", "scope": "mcp:tools"},
             secret,
         )
         authenticator = Authenticator(
-            AuthConfig(jwt_hs256_secret=secret, jwt_audience="mcp-guard")
+            AuthConfig(jwt_hs256_secret=secret, jwt_audience="verdikt")
         )
 
         with self.assertRaisesRegex(AuthError, "exp claim"):
@@ -234,13 +234,13 @@ class AuthenticatorTest(unittest.TestCase):
 
     def test_protected_resource_metadata_advertises_resource_and_authorization_server(self) -> None:
         config = AuthConfig(
-            resource_uri="https://guard.example.test/mcp",
+            resource_uri="https://verdikt.example.test/mcp",
             authorization_server="https://auth.example.test",
         )
 
         metadata = config.protected_resource_metadata()
 
-        self.assertEqual(metadata["resource"], "https://guard.example.test/mcp")
+        self.assertEqual(metadata["resource"], "https://verdikt.example.test/mcp")
         self.assertEqual(metadata["authorization_servers"], ["https://auth.example.test"])
         self.assertEqual(metadata["scopes_supported"], ["mcp:tools", "mcp:admin"])
 
@@ -283,7 +283,7 @@ class AuthenticatorTest(unittest.TestCase):
             Authenticator(
                 AuthConfig(
                     bearer_token="test-token",
-                    resource_uri="https://guard.example.test/mcp",
+                    resource_uri="https://verdikt.example.test/mcp",
                 )
             ),
             set(),
@@ -316,7 +316,7 @@ class AuthenticatorTest(unittest.TestCase):
             Authenticator(
                 AuthConfig(
                     bearer_token="test-token",
-                    resource_uri="https://guard.example.test/mcp",
+                    resource_uri="https://verdikt.example.test/mcp",
                     required_scopes=("mcp:tools",),
                 )
             ),
@@ -327,7 +327,7 @@ class AuthenticatorTest(unittest.TestCase):
         headers = dict(messages[0]["headers"])
 
         self.assertEqual(messages[0]["status"], 401)
-        self.assertIn(b'resource_metadata="https://guard.example.test/', headers[b"www-authenticate"])
+        self.assertIn(b'resource_metadata="https://verdikt.example.test/', headers[b"www-authenticate"])
         self.assertIn(b'scope="mcp:tools"', headers[b"www-authenticate"])
 
     @staticmethod

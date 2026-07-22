@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "verdikt.fullname" . }}
+  labels:
+    {{- include "verdikt.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "verdikt.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: {{ include "verdikt.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "verdikt.serviceAccountName" . }}
+      containers:
+        - name: verdikt
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: VERDIKT_MODE
+              value: real-mcp
+            - name: VERDIKT_APPROVAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "verdikt.fullname" . }}
+                  key: VERDIKT_APPROVAL_SECRET
+            - name: VERDIKT_HTTP_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "verdikt.fullname" . }}
+                  key: VERDIKT_HTTP_BEARER_TOKEN
+            - name: VERDIKT_JWT_HS256_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "verdikt.fullname" . }}
+                  key: VERDIKT_JWT_HS256_SECRET
+            - name: VERDIKT_AUDIT_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "verdikt.fullname" . }}
+                  key: VERDIKT_AUDIT_HMAC_SECRET
+            - name: VERDIKT_AUDIT_SIGNATURE_REQUIRED
+              value: {{ .Values.audit.signatureRequired | quote }}
+            - name: VERDIKT_AUDIT_VERIFY_ON_STARTUP
+              value: {{ .Values.audit.verifyOnStartup | quote }}
+            - name: VERDIKT_JWT_ISSUER
+              value: {{ .Values.auth.jwtIssuer | quote }}
+            - name: VERDIKT_JWT_AUDIENCE
+              value: {{ .Values.auth.jwtAudience | quote }}
+            - name: VERDIKT_JWT_REQUIRED_GROUP
+              value: {{ .Values.auth.jwtRequiredGroup | quote }}
+            - name: VERDIKT_JWT_JWKS_URL
+              value: {{ .Values.auth.jwtJwksUrl | quote }}
+            - name: VERDIKT_REDIS_URL
+              value: {{ .Values.redis.url | quote }}
+            - name: VERDIKT_REDIS_REQUIRED
+              value: {{ .Values.redis.required | quote }}
+            - name: VERDIKT_ARGUS_URL
+              value: {{ .Values.argus.url | quote }}
+            - name: VERDIKT_ARGUS_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "verdikt.fullname" . }}
+                  key: VERDIKT_ARGUS_API_TOKEN
+            - name: VERDIKT_ARGUS_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "verdikt.fullname" . }}
+                  key: VERDIKT_ARGUS_HMAC_SECRET
+            - name: VERDIKT_ARGUS_ALLOW_INSECURE_HTTP
+              value: {{ .Values.argus.allowInsecureHttp | quote }}
+            - name: VERDIKT_TELEMETRY
+              value: {{ .Values.telemetry.mode | quote }}
+            - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+              value: {{ .Values.telemetry.otlpEndpoint | quote }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          {{- end }}
+      {{- if .Values.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "verdikt.fullname" . }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

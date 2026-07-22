@@ -1,16 +1,16 @@
-# GateTrace MCP Terraform Deployment
+# Verdikt Terraform Deployment
 
-This Terraform module is the production-facing real MCP deployment path for GateTrace MCP. It provisions:
+This Terraform module is the production-facing real MCP deployment path for Verdikt. It provisions:
 
 - Amazon ECR repository with scan-on-push and AES256 encryption
 - ECR lifecycle policy that keeps the most recent five images
 - EC2 instance profile and IAM role
 - SSM Session Manager permissions
 - Security group for the dashboard port
-- One encrypted-root-volume EC2 instance running the GateTrace MCP Docker image
+- One encrypted-root-volume EC2 instance running the Verdikt Docker image
 - Official MCP Streamable HTTP endpoint at `/mcp`
 - Health and Prometheus-style metrics endpoints at `/healthz` and `/metrics`
-- AWS Secrets Manager storage for bearer-token and approval-token secrets
+- AWS Secrets Manager storage for bearer-token, approval-token, and independent audit-signing secrets
 
 The module uses default names that avoid colliding with the CloudFormation demo path.
 
@@ -20,10 +20,11 @@ From the repository root:
 
 ```bash
 export AWS_REGION=us-east-1
-export MCP_GUARD_ALLOWED_CIDR="$(curl -s https://checkip.amazonaws.com)/32"
-export MCP_GUARD_MODE=real-mcp
-export MCP_GUARD_HTTP_BEARER_TOKEN="$(openssl rand -hex 24)"
-export MCP_GUARD_APPROVAL_SECRET="$(openssl rand -hex 32)"
+export VERDIKT_ALLOWED_CIDR="$(curl -s https://checkip.amazonaws.com)/32"
+export VERDIKT_MODE=real-mcp
+export VERDIKT_HTTP_BEARER_TOKEN="$(openssl rand -hex 24)"
+export VERDIKT_APPROVAL_SECRET="$(openssl rand -hex 32)"
+export VERDIKT_AUDIT_HMAC_SECRET="$(openssl rand -hex 32)"
 ./scripts/aws/deploy_terraform.sh
 ```
 
@@ -36,9 +37,9 @@ Destroy resources after the demo:
 For ARM/free-tier experiments:
 
 ```bash
-export MCP_GUARD_INSTANCE_TYPE=t4g.micro
-export MCP_GUARD_DOCKER_PLATFORM=linux/arm64
-export MCP_GUARD_AMI_SSM_PARAMETER=/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+export VERDIKT_INSTANCE_TYPE=t4g.micro
+export VERDIKT_DOCKER_PLATFORM=linux/arm64
+export VERDIKT_AMI_SSM_PARAMETER=/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
 ./scripts/aws/deploy_terraform.sh
 ```
 
@@ -53,8 +54,8 @@ terraform apply -target=aws_ecr_repository.app
 Then build and push the image from the repository root:
 
 ```bash
-export MCP_GUARD_ECR_REPOSITORY=mcp-guard-terraform
-export MCP_GUARD_IMAGE_TAG=latest
+export VERDIKT_ECR_REPOSITORY=verdikt-terraform
+export VERDIKT_IMAGE_TAG=latest
 IMAGE_URI=$(./scripts/aws/build_push_ecr.sh)
 echo "$IMAGE_URI"
 ```
@@ -64,7 +65,7 @@ Finish the infrastructure apply:
 ```bash
 cd infra/aws/terraform
 terraform apply \
-  -var="repository_name=mcp-guard-terraform" \
+  -var="repository_name=verdikt-terraform" \
   -var="image_tag=latest" \
   -var="allowed_cidr=<your-public-ip>/32"
 ```

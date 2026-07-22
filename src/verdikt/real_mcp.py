@@ -1,0 +1,456 @@
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import os
+from pathlib import Path
+from typing import Any
+
+from .auth import AuthError, Authenticator
+from .ops_runtime import VerdiktOpsRuntime
+from .request_context import (
+    bind_authenticated_subject,
+    is_control_plane_admin,
+    reset_authenticated_subject,
+)
+from .slack_approval import SlackApprovalError
+
+
+def build_runtime(policy_path: Path, audit_path: Path) -> VerdiktOpsRuntime:
+    return VerdiktOpsRuntime(
+        policy_path,
+        audit_path,
+        circuit_failure_threshold=int(os.getenv("VERDIKT_CIRCUIT_FAILURE_THRESHOLD", "3")),
+        circuit_cooldown_seconds=int(os.getenv("VERDIKT_CIRCUIT_COOLDOWN_SECONDS", "300")),
+    )
+
+
+def serve_real_mcp(args: argparse.Namespace) -> None:
+    try:
+        from mcp.server.fastmcp import FastMCP
+        from starlette.requests import Request
+        from starlette.responses import JSONResponse, PlainTextResponse
+        import uvicorn
+    except ImportError as exc:  # pragma: no cover - depends on optional profile
+        raise RuntimeError(
+            "The real MCP server requires the optional MCP dependencies. "
+            "Install them with: python3 -m pip install -e '.[mcp]'"
+        ) from exc
+
+    authenticator = Authenticator.from_env()
+    remote_bind = args.host not in {"127.0.0.1", "localhost", "::1"}
+    allow_unauthenticated_remote = os.getenv(
+        "VERDIKT_ALLOW_UNAUTHENTICATED_REMOTE", ""
+    ).lower() in {"1", "true", "yes"}
+    if (
+        remote_bind
+        and (authenticator.config.jwt_hs256_secret or authenticator.config.jwt_jwks_url)
+        and "VERDIKT_RESOURCE_URI" not in os.environ
+    ):
+        raise AuthError("remote JWT mode requires an explicit VERDIKT_RESOURCE_URI")
+    if "VERDIKT_RESOURCE_URI" not in os.environ:
+        advertised_host = args.host if args.host not in {"0.0.0.0", "::"} else "127.0.0.1"
+        authenticator.config = dataclasses.replace(
+            authenticator.config,
+            resource_uri=f"http://{advertised_host}:{args.port}{args.mcp_path}",
+        )
+    authenticator.config.validate_for_remote_server(
+        require_auth=remote_bind and not allow_unauthenticated_remote
+    )
+    runtime = build_runtime(args.policy, args.audit_db)
+    mcp = FastMCP(
+        "Verdikt Production Ops",
+        instructions=(
+            "Use these tools for guarded production operations. Destructive actions "
+            "require signed approval tokens. Secrets are redacted and all calls are audited."
+        ),
+        host=args.host,
+        port=args.port,
+        streamable_http_path=args.mcp_path,
+        json_response=True,
+        stateless_http=True,
+    )
+
+    register_tools(mcp, runtime)
+    app = mcp.streamable_http_app()
+
+    app.add_middleware(
+        _AuthMiddleware,
+        authenticator=authenticator,
+        exempt_paths={
+            "/healthz",
+            "/.well-known/oauth-protected-resource",
+            "/integrations/slack/actions",
+        },
+    )
+
+    async def health(_: Request) -> JSONResponse:
+        return JSONResponse(
+            {
+                "status": "ok",
+                "server": "verdikt",
+                "mcp_path": args.mcp_path,
+                "auth": authenticator.config.mode,
+            }
+        )
+
+    async def metrics(_: Request) -> PlainTextResponse:
+        return PlainTextResponse(runtime.render_metrics(), media_type="text/plain; version=0.0.4")
+
+    async def protected_resource(_: Request) -> JSONResponse:
+        return JSONResponse(authenticator.config.protected_resource_metadata())
+
+    async def slack_actions(request: Request) -> JSONResponse:
+        body = (await request.body()).decode()
+        headers = {key.lower(): value for key, value in request.headers.items()}
+        try:
+            response = runtime.slack_approvals.handle_action(headers, body)
+        except SlackApprovalError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return JSONResponse(response)
+
+    app.add_route("/healthz", health, methods=["GET"])
+    app.add_route("/metrics", metrics, methods=["GET"])
+    app.add_route("/.well-known/oauth-protected-resource", protected_resource, methods=["GET"])
+    app.add_route("/integrations/slack/actions", slack_actions, methods=["POST"])
+
+    uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
+
+
+class _AuthMiddleware:
+    def __init__(self, app: Any, authenticator: Authenticator, exempt_paths: set[str]) -> None:
+        self.app = app
+        self.authenticator = authenticator
+        self.exempt_paths = exempt_paths
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] != "http" or scope.get("path") in self.exempt_paths:
+            await self.app(scope, receive, send)
+            return
+        headers = {key.decode().lower(): value.decode() for key, value in scope.get("headers", [])}
+        origin = headers.get("origin")
+        if origin is not None and not self.authenticator.config.origin_allowed(origin):
+            from starlette.responses import JSONResponse
+
+            response = JSONResponse({"error": "invalid_origin"}, status_code=403)
+            await response(scope, receive, send)
+            return
+        try:
+            auth_result = self.authenticator.authenticate(headers.get("authorization", ""))
+        except AuthError:
+            from starlette.responses import JSONResponse
+
+            metadata_url = self.authenticator.config.protected_resource_metadata_url()
+            response = JSONResponse(
+                {"error": "invalid_token"},
+                status_code=401,
+                headers={
+                    "WWW-Authenticate": self.authenticator.config.bearer_challenge(metadata_url),
+                },
+            )
+            await response(scope, receive, send)
+            return
+        scope["verdikt.auth"] = {"subject": auth_result.subject, "claims": auth_result.claims}
+        subject = "" if auth_result.claims.get("auth_type") == "static_bearer" else auth_result.subject
+        context_token = bind_authenticated_subject(subject, auth_result.claims)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            reset_authenticated_subject(context_token)
+
+
+def register_tools(mcp: Any, runtime: VerdiktOpsRuntime) -> None:
+    @mcp.tool(
+        name="verdikt.call_upstream",
+        description=(
+            "Call an operator-configured external MCP server through Verdikt policy, "
+            "metadata pinning, result inspection, redaction, tracing, and audit controls."
+        ),
+    )
+    def guard_call_upstream(server: str, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if server not in runtime.external_clients:
+            return {
+                "allowed": False,
+                "rule": "unknown_external_server",
+                "reason": f"external MCP server is not configured: {server}",
+            }
+        return runtime.call_tool(server, tool, arguments).as_dict()
+
+    @mcp.tool(
+        name="platform.health",
+        description="Inspect service status, release, replica health, error rate, and latency.",
+    )
+    def platform_health(service: str) -> dict[str, Any]:
+        return runtime.call_tool("platform-ops", "platform.health", {"service": service}).as_dict()
+
+    @mcp.tool(
+        name="platform.read_config",
+        description="Read sanitized runtime configuration for a service. Secrets are redacted.",
+    )
+    def platform_read_config(service: str) -> dict[str, Any]:
+        return runtime.call_tool("platform-ops", "platform.read_config", {"service": service}).as_dict()
+
+    @mcp.tool(
+        name="platform.read_logs",
+        description="Read recent service logs with a query and bounded result limit.",
+    )
+    def platform_read_logs(service: str, query: str, limit: int = 10) -> dict[str, Any]:
+        return runtime.call_tool(
+            "platform-ops",
+            "platform.read_logs",
+            {"service": service, "query": query, "limit": limit},
+        ).as_dict()
+
+    @mcp.tool(
+        name="platform.run_diagnostic",
+        description="Run an allowlisted diagnostic command such as dependency-health, error-rate, or latency-summary.",
+    )
+    def platform_run_diagnostic(service: str, command: str) -> dict[str, Any]:
+        return runtime.call_tool(
+            "platform-ops",
+            "platform.run_diagnostic",
+            {"service": service, "command": command},
+        ).as_dict()
+
+    @mcp.tool(
+        name="platform.restart_deployment",
+        description="Perform a guarded rolling restart. Requires actor, rollback plan, and a signed approval token in production.",
+    )
+    def platform_restart_deployment(
+        service: str,
+        actor: str,
+        rollback_plan: str,
+        environment: str = "production",
+        approval_token: str = "",
+        dry_run: bool = False,
+        shadow_mode: bool = False,
+        incident_id: str = "",
+        auto_create_incident: bool = False,
+    ) -> dict[str, Any]:
+        return runtime.call_tool(
+            "platform-ops",
+            "platform.restart_deployment",
+            {
+                "service": service,
+                "actor": actor,
+                "environment": environment,
+                "rollback_plan": rollback_plan,
+                "approval_token": approval_token,
+                "dry_run": dry_run,
+                "shadow_mode": shadow_mode,
+                "incident_id": incident_id,
+                "auto_create_incident": auto_create_incident,
+            },
+        ).as_dict()
+
+    @mcp.tool(
+        name="platform.rollback_deployment",
+        description="Roll a service back to a known release. Requires actor, rollback plan, and a signed approval token in production.",
+    )
+    def platform_rollback_deployment(
+        service: str,
+        version: str,
+        actor: str,
+        rollback_plan: str,
+        environment: str = "production",
+        approval_token: str = "",
+        dry_run: bool = False,
+        shadow_mode: bool = False,
+        incident_id: str = "",
+        auto_create_incident: bool = False,
+    ) -> dict[str, Any]:
+        return runtime.call_tool(
+            "platform-ops",
+            "platform.rollback_deployment",
+            {
+                "service": service,
+                "version": version,
+                "actor": actor,
+                "environment": environment,
+                "rollback_plan": rollback_plan,
+                "approval_token": approval_token,
+                "dry_run": dry_run,
+                "shadow_mode": shadow_mode,
+                "incident_id": incident_id,
+                "auto_create_incident": auto_create_incident,
+            },
+        ).as_dict()
+
+    @mcp.tool(name="kubernetes.get_pod", description="Read Kubernetes pod status through Verdikt.")
+    def kubernetes_get_pod(namespace: str, pod: str) -> dict[str, Any]:
+        return runtime.call_tool(
+            "kubernetes",
+            "kubernetes.get_pod",
+            {"namespace": namespace, "pod": pod},
+        ).as_dict()
+
+    @mcp.tool(
+        name="kubernetes.restart_pod",
+        description="Restart a Kubernetes pod through guarded policy. Requires actor, rollback plan, and approval in production.",
+    )
+    def kubernetes_restart_pod(
+        namespace: str,
+        pod: str,
+        actor: str,
+        rollback_plan: str,
+        environment: str = "production",
+        approval_token: str = "",
+        dry_run: bool = False,
+        shadow_mode: bool = False,
+        incident_id: str = "",
+        auto_create_incident: bool = False,
+    ) -> dict[str, Any]:
+        return runtime.call_tool(
+            "kubernetes",
+            "kubernetes.restart_pod",
+            {
+                "namespace": namespace,
+                "pod": pod,
+                "actor": actor,
+                "environment": environment,
+                "rollback_plan": rollback_plan,
+                "approval_token": approval_token,
+                "dry_run": dry_run,
+                "shadow_mode": shadow_mode,
+                "incident_id": incident_id,
+                "auto_create_incident": auto_create_incident,
+            },
+        ).as_dict()
+
+    @mcp.tool(name="kubernetes.rollout_status", description="Read Kubernetes deployment rollout status.")
+    def kubernetes_rollout_status(namespace: str, deployment: str) -> dict[str, Any]:
+        return runtime.call_tool(
+            "kubernetes",
+            "kubernetes.rollout_status",
+            {"namespace": namespace, "deployment": deployment},
+        ).as_dict()
+
+    @mcp.tool(name="incident.create", description="Create an operational incident.")
+    def incident_create(title: str, severity: str) -> dict[str, Any]:
+        return runtime.call_tool(
+            "incident",
+            "incident.create",
+            {"title": title, "severity": severity},
+        ).as_dict()
+
+    @mcp.tool(name="incident.attach_evidence", description="Attach redacted evidence to an incident timeline.")
+    def incident_attach_evidence(incident_id: str, evidence: dict[str, Any]) -> dict[str, Any]:
+        return runtime.call_tool(
+            "incident",
+            "incident.attach_evidence",
+            {"incident_id": incident_id, "evidence": evidence},
+        ).as_dict()
+
+    @mcp.tool(name="incident.timeline", description="Read an incident timeline.")
+    def incident_timeline(incident_id: str) -> dict[str, Any]:
+        return runtime.call_tool("incident", "incident.timeline", {"incident_id": incident_id}).as_dict()
+
+    @mcp.tool(
+        name="verdikt.issue_approval",
+        description="Issue a short-lived HMAC approval token bound to exact tool arguments.",
+    )
+    def guard_issue_approval(
+        actor: str,
+        reason: str,
+        server: str,
+        tool: str,
+        arguments: dict[str, Any],
+        ttl_seconds: int = 300,
+    ) -> dict[str, Any]:
+        if not is_control_plane_admin():
+            return {
+                "allowed": False,
+                "rule": "admin_authorization",
+                "reason": "control-plane administrator scope or group is required",
+            }
+        if os.getenv("VERDIKT_ALLOW_DIRECT_APPROVAL", "").lower() not in {"1", "true", "yes"}:
+            return {
+                "allowed": False,
+                "rule": "human_approval_required",
+                "reason": "direct approval issuance is disabled; use verdikt.request_approval",
+            }
+        return {
+            "approval_token": runtime.issue_approval(
+                actor=actor,
+                reason=reason,
+                server=server,
+                tool=tool,
+                arguments=arguments,
+                ttl_seconds=ttl_seconds,
+            ),
+            "ttl_seconds": ttl_seconds,
+        }
+
+    @mcp.tool(
+        name="verdikt.request_approval",
+        description="Request an exact-argument approval through the configured Slack human workflow.",
+    )
+    def guard_request_approval(
+        actor: str,
+        reason: str,
+        server: str,
+        tool: str,
+        arguments: dict[str, Any],
+        ttl_seconds: int = 900,
+    ) -> dict[str, Any]:
+        try:
+            return runtime.request_slack_approval(
+                actor=actor,
+                reason=reason,
+                server=server,
+                tool=tool,
+                arguments=arguments,
+                ttl_seconds=ttl_seconds,
+            )
+        except (PermissionError, SlackApprovalError) as exc:
+            return {"status": "ERROR", "reason": str(exc)}
+
+    @mcp.tool(
+        name="verdikt.approval_status",
+        description="Read a Slack approval request and retrieve its token as the authenticated requester.",
+    )
+    def guard_approval_status(request_id: str, actor: str) -> dict[str, Any]:
+        try:
+            return runtime.slack_approval_status(request_id, actor)
+        except (PermissionError, SlackApprovalError) as exc:
+            return {"status": "ERROR", "reason": str(exc)}
+
+    @mcp.tool(name="verdikt.set_tool_enabled", description="Enable or disable a tool kill switch.")
+    def guard_set_tool_enabled(tool: str, enabled: bool) -> dict[str, Any]:
+        if not is_control_plane_admin():
+            return {
+                "allowed": False,
+                "rule": "admin_authorization",
+                "reason": "control-plane administrator scope or group is required",
+            }
+        runtime.set_tool_enabled(tool, enabled)
+        return runtime.kill_switches()
+
+    @mcp.tool(name="verdikt.set_server_enabled", description="Enable or disable a server kill switch.")
+    def guard_set_server_enabled(server: str, enabled: bool) -> dict[str, Any]:
+        if not is_control_plane_admin():
+            return {
+                "allowed": False,
+                "rule": "admin_authorization",
+                "reason": "control-plane administrator scope or group is required",
+            }
+        runtime.set_server_enabled(server, enabled)
+        return runtime.kill_switches()
+
+    @mcp.tool(name="verdikt.runtime_state", description="Inspect kill switches, circuit breakers, and recent audit events.")
+    def guard_runtime_state(limit: int = 10) -> dict[str, Any]:
+        if not is_control_plane_admin():
+            return {
+                "allowed": False,
+                "rule": "admin_authorization",
+                "reason": "control-plane administrator scope or group is required",
+            }
+        return {
+            "kill_switches": runtime.kill_switches(),
+            "circuit_breakers": runtime.circuit_breakers(),
+            "rate_limiter": {"mode": runtime.policy.rate_limiter_mode},
+            "tool_integrity": runtime.tool_integrity_reports,
+            "audit_integrity": runtime.audit_integrity(),
+            "finding_delivery": runtime.finding_delivery(),
+            "recent_audit": runtime.recent_audit(limit),
+        }

@@ -1,13 +1,16 @@
-.PHONY: test demo eval failure-test interop-community dashboard real-mcp trace docker-build observability-up observability-down helm-template aws-build-push aws-deploy aws-delete terraform-deploy terraform-destroy terraform-fmt serverless-package serverless-deploy serverless-destroy serverless-fmt
+.PHONY: test demo eval attackbench-smoke failure-test interop-community dashboard real-mcp trace docker-build observability-up observability-down helm-template aws-build-push aws-deploy aws-delete terraform-deploy terraform-destroy terraform-fmt serverless-package serverless-deploy serverless-destroy serverless-fmt
 
 test:
 	PYTHONPATH=src ./scripts/python.sh -m unittest discover -s tests -v
 
 demo:
-	./scripts/run_demo.sh --audit-db /tmp/mcp-guard-demo.db
+	./scripts/run_demo.sh --audit-db /tmp/verdikt-demo.db
 
 eval:
 	./scripts/run_evals.sh
+
+attackbench-smoke:
+	./scripts/run_attackbench.sh tests/fixtures/attackbench_smoke.jsonl build/attackbench-smoke.json
 
 failure-test:
 	./scripts/run_failure_tests.sh
@@ -22,10 +25,10 @@ real-mcp:
 	./scripts/run_real_mcp_http.sh
 
 trace:
-	MCP_GUARD_TELEMETRY=console ./scripts/run_demo.sh --audit-db /tmp/mcp-guard-trace.db
+	VERDIKT_TELEMETRY=console ./scripts/run_demo.sh --audit-db /tmp/verdikt-trace.db
 
 docker-build:
-	docker build -t gatetrace-mcp:local .
+	docker build -t verdikt:local .
 
 observability-up:
 	docker compose -f deploy/observability/docker-compose.yml up --build
@@ -34,7 +37,7 @@ observability-down:
 	docker compose -f deploy/observability/docker-compose.yml down
 
 helm-template:
-	helm template gatetrace-mcp charts/mcp-guard
+	helm template verdikt charts/verdikt
 
 aws-build-push:
 	./scripts/aws/build_push_ecr.sh

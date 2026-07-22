@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/../legacy_env.sh"
 
 REGION="${AWS_REGION:-us-east-1}"
-REPOSITORY="${MCP_GUARD_ECR_REPOSITORY:-gatetrace-mcp}"
-TAG="${MCP_GUARD_IMAGE_TAG:-latest}"
-PLATFORM="${MCP_GUARD_DOCKER_PLATFORM:-linux/amd64}"
+REPOSITORY="${VERDIKT_ECR_REPOSITORY:-verdikt}"
+TAG="${VERDIKT_IMAGE_TAG:-latest}"
+PLATFORM="${VERDIKT_DOCKER_PLATFORM:-linux/amd64}"
 
 ./scripts/aws/preflight_identity.sh >/dev/null
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"

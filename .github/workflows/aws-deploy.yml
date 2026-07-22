@@ -50,16 +50,18 @@ jobs:
         if: inputs.target == 'serverless'
         env:
           AWS_REGION: ${{ inputs.aws_region }}
-          MCP_GUARD_API_TOKEN: ${{ secrets.MCP_GUARD_API_TOKEN }}
-          MCP_GUARD_APPROVAL_SECRET: ${{ secrets.MCP_GUARD_APPROVAL_SECRET }}
+          VERDIKT_API_TOKEN: ${{ secrets.VERDIKT_API_TOKEN }}
+          VERDIKT_APPROVAL_SECRET: ${{ secrets.VERDIKT_APPROVAL_SECRET }}
+          VERDIKT_AUDIT_HMAC_SECRET: ${{ secrets.VERDIKT_AUDIT_HMAC_SECRET }}
         run: ./scripts/aws/deploy_serverless.sh
 
       - name: Deploy EC2 real MCP server
         if: inputs.target == 'ec2-real-mcp'
         env:
           AWS_REGION: ${{ inputs.aws_region }}
-          MCP_GUARD_ALLOWED_CIDR: ${{ inputs.allowed_cidr }}
-          MCP_GUARD_MODE: real-mcp
-          MCP_GUARD_HTTP_BEARER_TOKEN: ${{ secrets.MCP_GUARD_HTTP_BEARER_TOKEN }}
-          MCP_GUARD_APPROVAL_SECRET: ${{ secrets.MCP_GUARD_APPROVAL_SECRET }}
+          VERDIKT_ALLOWED_CIDR: ${{ inputs.allowed_cidr }}
+          VERDIKT_MODE: real-mcp
+          VERDIKT_HTTP_BEARER_TOKEN: ${{ secrets.VERDIKT_HTTP_BEARER_TOKEN }}
+          VERDIKT_APPROVAL_SECRET: ${{ secrets.VERDIKT_APPROVAL_SECRET }}
+          VERDIKT_AUDIT_HMAC_SECRET: ${{ secrets.VERDIKT_AUDIT_HMAC_SECRET }}
         run: ./scripts/aws/deploy_terraform.sh

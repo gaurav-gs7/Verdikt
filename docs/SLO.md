@@ -1,6 +1,6 @@
-# GateTrace MCP SLOs
+# Verdikt SLOs
 
-These SLOs frame GateTrace MCP as an AI operations control plane. They are intentionally practical for a free-tier demo, but written the way a production service would be reviewed.
+These SLOs frame Verdikt as an AI operations control plane. They are intentionally practical for a free-tier demo, but written the way a production service would be reviewed.
 
 ## Service Boundaries
 

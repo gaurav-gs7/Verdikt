@@ -1,10 +1,10 @@
-# GateTrace MCP Design Notes
+# Verdikt Design Notes
 
-These notes capture the main engineering choices behind GateTrace MCP and are useful for interview walkthroughs.
+These notes capture the main engineering choices behind Verdikt and are useful for interview walkthroughs.
 
 ## Core Boundary
 
-GateTrace MCP is a gateway, not an agent. It does not try to make the LLM smarter. It constrains what the agent can do when it reaches for production tools.
+Verdikt is a gateway, not an agent. It does not try to make the LLM smarter. It constrains what the agent can do when it reaches for production tools.
 
 The central rule is:
 
@@ -35,7 +35,7 @@ Each request receives a deterministic risk score. The score is not a machine-lea
 
 ## Observability
 
-GateTrace MCP emits three kinds of evidence:
+Verdikt emits three kinds of evidence:
 
 - SQLite audit events for durable local evidence.
 - Prometheus metrics for aggregate operational signals.

@@ -1,5 +1,5 @@
 variable "aws_region" {
-  description = "AWS region for all GateTrace MCP resources."
+  description = "AWS region for all Verdikt resources."
   type        = string
   default     = "us-east-1"
 }
@@ -7,13 +7,13 @@ variable "aws_region" {
 variable "app_name" {
   description = "Name prefix for EC2, IAM, and security group resources."
   type        = string
-  default     = "gatetrace-mcp-tf"
+  default     = "verdikt-tf"
 }
 
 variable "repository_name" {
-  description = "ECR repository name for the GateTrace MCP container image."
+  description = "ECR repository name for the Verdikt container image."
   type        = string
-  default     = "gatetrace-mcp"
+  default     = "verdikt"
 }
 
 variable "image_tag" {
@@ -40,7 +40,7 @@ variable "ami_ssm_parameter" {
 }
 
 variable "app_port" {
-  description = "Host port exposed by the GateTrace MCP dashboard."
+  description = "Host port exposed by the Verdikt dashboard."
   type        = number
   default     = 8080
 }
@@ -63,7 +63,7 @@ variable "root_volume_size_gb" {
 }
 
 variable "telemetry_mode" {
-  description = "GateTrace MCP telemetry mode inside the container."
+  description = "Verdikt telemetry mode inside the container."
   type        = string
   default     = "disabled"
 
@@ -92,7 +92,7 @@ variable "http_bearer_token" {
 }
 
 variable "approval_secret" {
-  description = "HMAC secret for signed GateTrace MCP approval tokens."
+  description = "HMAC secret for signed Verdikt approval tokens."
   type        = string
   default     = "local-dev-approval-secret-change-me"
   sensitive   = true

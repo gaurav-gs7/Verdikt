@@ -1,25 +1,41 @@
 services:
-  gatetrace-mcp:
+  verdikt:
     build:
       context: ../..
-    image: gatetrace-mcp:observability
+    image: verdikt:observability
     environment:
-      MCP_GUARD_MODE: real-mcp
-      MCP_GUARD_HTTP_BEARER_TOKEN: local-dev-token
-      MCP_GUARD_APPROVAL_SECRET: local-dev-approval-secret
-      MCP_GUARD_REDIS_URL: redis://redis:6379/0
-      MCP_GUARD_TELEMETRY: otlp
+      VERDIKT_MODE: real-mcp
+      VERDIKT_HTTP_BEARER_TOKEN: local-dev-token
+      VERDIKT_APPROVAL_SECRET: local-dev-approval-secret
+      VERDIKT_AUDIT_HMAC_SECRET: local-dev-audit-secret
+      VERDIKT_AUDIT_SIGNATURE_REQUIRED: "true"
+      VERDIKT_AUDIT_VERIFY_ON_STARTUP: "true"
+      VERDIKT_REDIS_URL: redis://redis:6379/0
+      VERDIKT_REDIS_REQUIRED: "true"
+      VERDIKT_TELEMETRY: otlp
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
     ports:
       - "8080:8080"
+    volumes:
+      - verdikt-data:/app/data
     depends_on:
-      - redis
-      - tempo
+      redis:
+        condition: service_healthy
+      tempo:
+        condition: service_started
 
   redis:
     image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   prometheus:
     image: prom/prometheus:v2.55.1
@@ -31,7 +47,7 @@ services:
     ports:
       - "9090:9090"
     depends_on:
-      - gatetrace-mcp
+      - verdikt
 
   tempo:
     image: grafana/tempo:2.6.1
@@ -65,3 +81,7 @@ services:
     depends_on:
       - prometheus
       - tempo
+
+volumes:
+  verdikt-data:
+  redis-data:

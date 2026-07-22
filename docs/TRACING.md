@@ -1,6 +1,6 @@
 # AWS Tracing And Observability
 
-GateTrace MCP has two tracing stories:
+Verdikt has two tracing stories:
 
 1. Local/OpenInference tracing for AI tool-governance spans.
 2. AWS-native tracing for deployed services.
@@ -10,22 +10,22 @@ GateTrace MCP has two tracing stories:
 Enable console spans:
 
 ```bash
-MCP_GUARD_TELEMETRY=console ./scripts/run_demo.sh
+VERDIKT_TELEMETRY=console ./scripts/run_demo.sh
 ```
 
 Enable OTLP:
 
 ```bash
-export MCP_GUARD_TELEMETRY=otlp
+export VERDIKT_TELEMETRY=otlp
 export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:6006/v1/traces
 ./scripts/run_real_mcp_http.sh
 ```
 
 Important spans:
 
-- `mcp_guard.call_tool`
-- `mcp_guard.real_mcp.call_tool`
-- `mcp_guard.policy.evaluate`
+- `verdikt.call_tool`
+- `verdikt.real_mcp.call_tool`
+- `verdikt.policy.evaluate`
 - `mcp.<tool_name>`
 - `groq.incident_summary`
 
@@ -61,7 +61,7 @@ Serverless custom metrics:
 Local/EC2 Prometheus-style metrics:
 
 ```bash
-curl -H "Authorization: Bearer $MCP_GUARD_HTTP_BEARER_TOKEN" http://<host>:8080/metrics
+curl -H "Authorization: Bearer $VERDIKT_HTTP_BEARER_TOKEN" http://<host>:8080/metrics
 ```
 
 ## Interview Framing

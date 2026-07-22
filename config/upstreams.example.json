@@ -5,14 +5,14 @@
         "npx",
         "-y",
         "@modelcontextprotocol/server-filesystem",
-        "/tmp/mcp-guard-sandbox"
+        "/tmp/verdikt-sandbox"
       ]
     },
     "authenticated-example": {
       "command": ["python3", "/opt/company-mcp/server.py"],
       "env": {
         "UPSTREAM_API_TOKEN": {
-          "from_aws_secret": "mcp-guard/upstreams/company",
+          "from_aws_secret": "verdikt/upstreams/company",
           "json_key": "api_token"
         }
       }
