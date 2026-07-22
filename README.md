@@ -6,7 +6,7 @@ The core demo runs on an 8 GB laptop with Python only, no local model, and no AP
 
 ## Demo Recording
 
-![Verdikt production control walkthrough](docs/assets/verdikt-demo.gif)
+![Verdikt end-to-end demo showing real commands, MCP subprocess backends, policy verdict branches, response inspection, and signed operational evidence](docs/assets/verdikt-demo.gif)
 
 ## Why This Project
 
