@@ -8,8 +8,6 @@ The core demo runs on an 8 GB laptop with Python only, no local model, and no AP
 
 ![Verdikt production control walkthrough](docs/assets/verdikt-demo.gif)
 
-This 16:9 walkthrough first explains what Verdikt is, the production problem it addresses, its bidirectional architecture, and why each control matters. It then uses actual Verdikt runtime calls to demonstrate allow, redaction, pre-execution denial, signed approval, Kubernetes dry-run, poisoned MCP response quarantine, kill-switch enforcement, Prometheus metrics, and signed audit-chain verification. Major chapters and completed outcomes remain visible for five seconds. See the [recording guide](docs/DEMO_RECORDING.md) for the scene-by-scene proof, narration, and reproducible build command.
-
 ## Why This Project
 
 An MCP server can expose operationally powerful tools to an AI agent. The interesting production question is not whether the agent can call a tool. It is whether the platform can constrain, observe, disable, and explain those calls under pressure.
