@@ -13,6 +13,13 @@
 - Hash-chained local audit plus JSONL/S3/SIEM shipping and signed DynamoDB events.
 - Generic HTTPS and Splunk HEC audit contracts with optional HMAC signing.
 - Reproducible guarded-call latency and throughput evidence in CI.
+- Evasion-resistant content inspection: base64/hex/URL-decoded payload rescanning,
+  homoglyph/leetspeak/spaced-letter normalization, a small non-English phrase set
+  (Spanish, French, German, Portuguese, Chinese, Russian), and cross-argument
+  split-field scanning (`src/judikt/content_guard.py`). This raises recall against
+  known plain-regex bypasses; it is still a deterministic heuristic layer, not a
+  semantic/model-based detector, and does not by itself justify moving MCP-19 or
+  MCP-12 from `partial` to `covered` in `config/mcp38_coverage.json`.
 
 ## Priority 1: Identity And Approval
 
@@ -52,6 +59,11 @@
 ## Priority 6: Agent Safety Evals
 
 - Expand MCP-38 covered controls beyond the current 12 categories.
-- Add encoded, multilingual, split-field, and low-and-slow injection fixtures.
+- Encoded, multilingual, and split-field injection fixtures now exist
+  (`tests/test_content_security.py`); low-and-slow (rate/time-based) injection
+  detection is still open.
+- Replace or supplement the regex/heuristic detection core with a semantic or
+  embedding-based check for paraphrased/novel injection phrasing that no fixed
+  pattern set will catch — this remains the largest gap in MCP-19/MCP-12/MCP-20.
 - Track pass/fail history in CI.
 - Fail builds on policy regressions.
