@@ -23,7 +23,9 @@ Judikt demonstrates:
 - Minimal subprocess environments that expose only explicitly brokered upstream credentials
 - Recursive tool-description and JSON Schema inspection before trust
 - SHA-256 tool-definition pinning and fail-closed rug-pull detection
-- Deterministic direct and indirect prompt-injection inspection
+- Deterministic direct and indirect prompt-injection inspection across tool arguments, metadata, and results
+- Evasion-resistant scanning for base64, hex, URL encoding, invisible Unicode, confusables, leetspeak, spaced-letter payloads, and injections split across JSON fields
+- Narrow multilingual rules for common instruction-override and role-reassignment phrases in Spanish, French, German, Portuguese, Chinese, and Russian
 - Quarantine envelopes that do not return malicious text to the agent
 - Policy-as-code allowlists and blocked argument patterns
 - JWT/OIDC resource-server authentication with issuer, audience, group, and scope validation
@@ -79,6 +81,14 @@ The upstream tool servers are separate subprocesses:
 - `platform-ops`: production service health, sanitized config, logs, allowlisted diagnostics, rolling restart, and deployment rollback.
 - `kubernetes`: pod status, guarded pod restart, and rollout status. It uses a safe simulator by default and can be pointed at `kubectl` with `JUDIKT_KUBERNETES_MODE=kubectl` for a controlled lab.
 - `incident`: create incidents, attach correlated evidence, and read timelines.
+
+### Content Security Pipeline
+
+Judikt treats MCP arguments, tool definitions, and tool results as untrusted content. Each inspected string is checked directly and through normalized variants that remove invisible controls, map common lookalike and leetspeak characters, and collapse spaced-letter obfuscation. Candidate base64, hex, and URL-encoded payloads are decoded and rescanned, while strings from the same object are also joined for a bounded pass that catches instructions split across JSON fields.
+
+Inspection is deterministic, size-bounded, and privacy-preserving: findings contain rule names, JSON paths, and evidence hashes rather than the matched malicious text. In `fail_closed` mode, a suspicious result is replaced with a quarantine envelope and never returned to the agent. Exceeding the scan budget also fails closed. `report_only` and `disabled` modes are available for controlled evaluation.
+
+This is defense in depth, not a claim of complete semantic detection. The multilingual rules cover a deliberately small set of high-value phrases, and novel paraphrases can evade deterministic patterns. Judikt therefore combines content inspection with policy enforcement, scoped credentials, metadata pinning, approvals, isolation, audit evidence, and kill switches.
 
 ## Quick Start
 
@@ -416,6 +426,7 @@ Implemented and tested controls directly address:
 - Agent attempts to run unsafe network commands in diagnostic arguments.
 - Direct prompt injection embedded in tool arguments.
 - Indirect prompt injection embedded in an external MCP tool result.
+- Encoded, Unicode-obfuscated, spaced-letter, confusable-character, multilingual-phrase, and split-field variants covered by the deterministic inspection rules.
 - Poisoned tool descriptions, nested schema fields, exact-name shadowing, and rug pulls.
 - Caller token passthrough and authenticated actor spoofing.
 - Unauthorized restart or rollback actions.
@@ -424,7 +435,7 @@ Implemented and tested controls directly address:
 - Fast containment of a compromised tool or MCP server.
 - Audit-record mutation and loss of local-only evidence through optional central shipping.
 
-Explicit gaps remain: Judikt is an OAuth resource server, not an authorization server; PKCE and per-client consent belong in the chosen IdP/client flow. It does not yet provide multi-tenant isolation, semantic DLP for privacy inference, complete Host-header and deployment-edge DNS-rebinding defenses beyond Origin validation, cryptographically signed policy bundles, OS-level upstream sandboxes, or complete MCP resource/prompt proxying. The coverage matrix treats these as partial or not covered rather than presenting the project as universally production complete.
+Explicit gaps remain: Judikt is an OAuth resource server, not an authorization server; PKCE and per-client consent belong in the chosen IdP/client flow. Its content guard is heuristic rather than a complete semantic or model-based detector, and its multilingual rules are intentionally non-exhaustive. It does not yet provide multi-tenant isolation, semantic DLP for privacy inference, complete Host-header and deployment-edge DNS-rebinding defenses beyond Origin validation, cryptographically signed policy bundles, OS-level upstream sandboxes, or complete MCP resource/prompt proxying. The coverage matrix treats these as partial or not covered rather than presenting the project as universally production complete.
 
 ## Design Notes
 
