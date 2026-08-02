@@ -1,64 +1,82 @@
-# Judikt Demo Recording
+# Judikt 150-Second Hybrid Demo
 
-The repository includes a 16:9 animated product and working-system walkthrough intended for the README, Medium, LinkedIn, and interview screen sharing. It is not a hand-authored product mockup: `scripts/record_demo.py` launches Judikt, executes guarded calls, verifies the resulting signed audit chain, and renders those returned decisions.
+The README recording deliberately uses two visual modes:
 
-![Judikt demo poster](assets/judikt-demo-poster.png)
+- Polished product slides explain the problem, purpose, control model, trust boundaries, production operability, and conceptual architecture.
+- Terminal slides are mandatory whenever real input, processing, backend execution, output, metrics, or audit evidence is shown.
 
-## What the recording explains
+This keeps the story understandable without disguising runtime behavior as a product mockup.
 
-The opening chapters are held for five seconds each and establish:
+![Judikt hybrid demo poster](assets/judikt-demo-poster.png)
 
-1. What Judikt is and where it sits between an AI agent and MCP servers.
-2. Why agent overreach, confused-deputy authorization, poisoned responses, and weak evidence are production concerns.
-3. How requests pass through identity, policy, risk, approval, rate-limit, rollback, and kill-switch controls.
-4. How responses pass through tool-definition verification, prompt-injection inspection, and redaction.
-5. Which runtime components are real in the recording and which controlled fixtures keep it safe and reproducible.
-6. Which backend class serves each built-in MCP server and where simulation is intentionally used.
-7. The actual `make demo-recording` command, `JudiktRuntime.call_tool` invocation, child-process command, JSON-RPC method, and source-module path.
-8. The distinct `ALLOW`, `DENY`, `DRY_RUN_ONLY`, and `QUARANTINE` execution branches, including whether the backend is invoked.
+## Timeline
 
-## What the working demo proves
+The generated GIF is exactly 150 seconds and loops automatically.
 
-1. A low-risk production health read is allowed.
-2. A sensitive configuration value is recursively redacted.
-3. An exfiltration-shaped diagnostic command is denied before execution.
-4. A production rollback pauses with `REQUIRE_APPROVAL`.
-5. The exact rollback executes after receiving an HMAC-signed, argument-bound approval.
-6. A Kubernetes remediation returns `DRY_RUN_ONLY` without mutating a cluster.
-7. A poisoned response from an independently running MCP fixture is quarantined.
-8. An operator kill switch blocks a tool immediately.
-9. Prometheus counters and the HMAC-signed audit hash chain verify the run.
+1. Product introduction: what Judikt is and where it sits.
+2. Production problem: overreach, confused-deputy risk, poisoned results, and weak evidence.
+3. Request governance: identity, policy, risk, approval, rate limits, and blast-radius controls.
+4. Response defense: definition pinning, injection scanning, quarantine, and redaction.
+5. Trust boundaries: caller, gateway, MCP server, brokered credentials, and evidence systems.
+6. Production operability: observability, persistence, deployment automation, and qualification.
+7. Conceptual flowchart: agent to request gate, MCP server, response gate, and evidence fan-out.
+8. Explicit handoff from explanation to captured terminal proof.
+9. Live command and terminal flowcharts.
+10. Actual code path and discovered MCP child-process tool counts.
+11. Eight guarded runtime branches with input, processing, execution or skip behavior, and output.
+12. Prometheus exposition and signed audit-chain verification.
+13. Polished closing summary and reproducible build command.
 
-The response-injection scene intentionally withholds the malicious text and shows only quarantine metadata. The runtime records rule names and one-way evidence hashes, matching Judikt's production quarantine behavior.
+Major outcomes remain visible for at least five seconds.
 
-Each completed working-demo outcome remains visible for five seconds. Brief request and policy-evaluation frames make the transition between intent and verdict explicit. The complete animation runs for approximately 113 seconds.
+## Terminal proof
+
+`scripts/record_demo.py` runs this command as a real subprocess:
+
+```bash
+./scripts/run_demo.sh --policy "$TMP/policy.json" --audit-db "$TMP/audit.db"
+```
+
+The recorder captures the command's stdout. It does not hand-author the values displayed in the terminal chapters. Generation fails unless that transcript proves:
+
+1. A safe production read executed in an MCP child process.
+2. A returned API key was redacted.
+3. Unsafe arguments were denied before upstream execution.
+4. A production rollback returned `REQUIRE_APPROVAL`.
+5. An HMAC token authorized only the exact approved rollback.
+6. Kubernetes remediation returned `DRY_RUN_ONLY` without mutation.
+7. A controlled external MCP response was quarantined without unsafe-text exposure.
+8. An operator kill switch skipped upstream execution.
+9. Eight events passed signed hash-chain verification and appeared in Prometheus counters.
 
 ## Reproduce it
+
+Run the terminal walkthrough directly:
+
+```bash
+./scripts/run_demo.sh --audit-db /tmp/judikt-demo.db
+```
+
+Regenerate the complete 150-second hybrid media artifact:
 
 ```bash
 python3 -m pip install -e '.[media]'
 make demo-recording
 ```
 
-This regenerates:
+This writes:
 
-- `docs/assets/judikt-demo.gif`: looping 1280 x 720 recording, suitable for GitHub and Medium.
-- `docs/assets/judikt-demo-poster.png`: static 1280 x 720 cover image.
+- `docs/assets/judikt-demo.gif`: looping 1280 x 720 hybrid walkthrough.
+- `docs/assets/judikt-demo-poster.png`: static 1280 x 720 product cover.
 
-The recording uses a temporary policy, temporary SQLite databases, deterministic correlation IDs, local MCP subprocesses, and controlled signing secrets. It makes no cloud or LLM API calls and deletes its runtime state when rendering finishes.
+The renderer enforces an exact 150,000 ms duration and fails if the terminal sequence leaves insufficient room for the final five-second close.
 
-## Medium caption
+## Safety and accuracy
 
-> Judikt intercepts MCP tool execution, applies deterministic SRE controls, scans untrusted responses, and emits signed operational evidence. Every decision shown here is generated by the real runtime.
+The recorder creates a temporary policy, SQLite audit database, tool-definition pin store, deterministic correlation IDs, and controlled signing secrets. The poisoned response comes from `tests/fixtures/external_mcp_server.py`, which runs as a separate JSON-RPC stdio process. No cloud, LLM API, or production endpoint is contacted, and all temporary state is deleted after capture.
 
-## Walkthrough narration
+The local platform and Kubernetes operations are safe simulators unless Kubernetes is explicitly switched to `kubectl` mode. The gateway, subprocess MCP transport, policy outcomes, approval verification, response inspection, redaction, metrics, and signed audit path shown in the terminal are the real project implementation.
 
-"Judikt is a deterministic security and reliability control plane between AI agents and MCP tools. The agent proposes a tool call, but Judikt decides whether it can execute. This matters because agents can overreach, inherit excessive credentials, or be manipulated by untrusted tool responses. Judikt applies identity, allowlist, risk, rate-limit, approval, rollback, and kill-switch checks before execution. It verifies pinned tool definitions and scans and redacts the result before returning anything to the agent. Every decision creates correlated operational evidence.
+## Publishing caption
 
-The working demonstration now executes the real runtime. A safe health read passes and a returned API key is redacted. An exfiltration-shaped command is denied before it reaches the tool. A production rollback pauses until it receives a signed token bound to the exact server, tool, and arguments. Kubernetes remediation is evaluated in dry-run mode without mutation. A separately running MCP fixture returns indirect prompt injection, which Judikt quarantines without exposing the malicious text. An operator kill switch blocks a tool immediately. Finally, Prometheus counters summarize the outcomes and the signed audit hash chain verifies every event. The model proposes; deterministic controls decide; SREs retain evidence and control."
-
-## Publishing notes
-
-- GitHub renders the GIF directly from `docs/assets/judikt-demo.gif`.
-- Medium accepts the GIF as an uploaded image; use the poster as the article cover if Medium compresses the animation.
-- Keep the caption explicit that the independent malicious MCP server is a controlled fixture. It proves the boundary behavior without claiming a live production incident.
+> Judikt in 150 seconds: product context and architecture first, followed by captured terminal proof of MCP inputs, deterministic controls, backend execution, poisoned-response quarantine, Prometheus output, and signed audit verification.

