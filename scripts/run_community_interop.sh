@@ -2,4 +2,4 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-exec ./scripts/python.sh -m verdikt.cli interop "$@"
+exec ./scripts/python.sh -m judikt.cli interop "$@"

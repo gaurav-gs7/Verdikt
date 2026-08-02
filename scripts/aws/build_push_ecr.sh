@@ -3,9 +3,9 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../legacy_env.sh"
 
 REGION="${AWS_REGION:-us-east-1}"
-REPOSITORY="${VERDIKT_ECR_REPOSITORY:-verdikt}"
-TAG="${VERDIKT_IMAGE_TAG:-latest}"
-PLATFORM="${VERDIKT_DOCKER_PLATFORM:-linux/amd64}"
+REPOSITORY="${JUDIKT_ECR_REPOSITORY:-judikt}"
+TAG="${JUDIKT_IMAGE_TAG:-latest}"
+PLATFORM="${JUDIKT_DOCKER_PLATFORM:-linux/amd64}"
 
 ./scripts/aws/preflight_identity.sh >/dev/null
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"

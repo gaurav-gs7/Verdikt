@@ -13,8 +13,8 @@ import urllib.parse
 from pathlib import Path
 from unittest.mock import patch
 
-from verdikt.approval import ApprovalAuthority
-from verdikt.slack_approval import SlackApprovalError, SlackApprovalWorkflow
+from judikt.approval import ApprovalAuthority
+from judikt.slack_approval import SlackApprovalError, SlackApprovalWorkflow
 
 
 class _Response:
@@ -34,9 +34,9 @@ class SlackApprovalWorkflowTest(unittest.TestCase):
         self.environment = patch.dict(
             "os.environ",
             {
-                "VERDIKT_SLACK_WEBHOOK_URL": "https://hooks.slack.test/services/example",
-                "VERDIKT_SLACK_SIGNING_SECRET": "slack-signing-secret",
-                "VERDIKT_SLACK_APPROVER_IDS": "U-ONCALL",
+                "JUDIKT_SLACK_WEBHOOK_URL": "https://hooks.slack.test/services/example",
+                "JUDIKT_SLACK_SIGNING_SECRET": "slack-signing-secret",
+                "JUDIKT_SLACK_APPROVER_IDS": "U-ONCALL",
             },
             clear=True,
         )
@@ -279,7 +279,7 @@ class SlackApprovalWorkflowTest(unittest.TestCase):
         captured: list[tuple[object, float]] = []
         self.workflow._timeout_seconds = 1.25
         with patch(
-            "verdikt.slack_approval.urllib.request.urlopen",
+            "judikt.slack_approval.urllib.request.urlopen",
             side_effect=lambda request, timeout: captured.append((request, timeout))
             or _Response(),
         ):
@@ -321,7 +321,7 @@ class SlackApprovalWorkflowTest(unittest.TestCase):
         ]
         for failure, message in failures:
             with self.subTest(message=message), patch(
-                "verdikt.slack_approval.urllib.request.urlopen",
+                "judikt.slack_approval.urllib.request.urlopen",
                 side_effect=failure if isinstance(failure, Exception) else None,
                 return_value=failure if not isinstance(failure, Exception) else None,
             ), self.assertRaisesRegex(SlackApprovalError, message) as raised:
@@ -338,27 +338,27 @@ class SlackApprovalWorkflowTest(unittest.TestCase):
 
     def test_configuration_rejects_unsafe_urls_and_invalid_limits(self) -> None:
         cases = [
-            ({"VERDIKT_SLACK_WEBHOOK_URL": "http://hooks.slack.test/path"}, "HTTPS"),
-            ({"VERDIKT_SLACK_WEBHOOK_URL": "ftp://hooks.slack.test/path"}, "absolute HTTP"),
+            ({"JUDIKT_SLACK_WEBHOOK_URL": "http://hooks.slack.test/path"}, "HTTPS"),
+            ({"JUDIKT_SLACK_WEBHOOK_URL": "ftp://hooks.slack.test/path"}, "absolute HTTP"),
             (
-                {"VERDIKT_SLACK_WEBHOOK_URL": "https://user:pass@hooks.slack.test/path"},
+                {"JUDIKT_SLACK_WEBHOOK_URL": "https://user:pass@hooks.slack.test/path"},
                 "must not contain",
             ),
             (
-                {"VERDIKT_SLACK_WEBHOOK_URL": "https://hooks.slack.test/path?token=x"},
+                {"JUDIKT_SLACK_WEBHOOK_URL": "https://hooks.slack.test/path?token=x"},
                 "must not contain",
             ),
-            ({"VERDIKT_SLACK_MAX_PENDING_PER_REQUESTER": "bad"}, "integer between"),
-            ({"VERDIKT_SLACK_MAX_PENDING_PER_REQUESTER": "0"}, "integer between"),
-            ({"VERDIKT_SLACK_MAX_PENDING_PER_REQUESTER": "101"}, "integer between"),
-            ({"VERDIKT_SLACK_TIMEOUT_SECONDS": "0"}, "positive finite"),
-            ({"VERDIKT_SLACK_TIMEOUT_SECONDS": "bad"}, "positive finite"),
-            ({"VERDIKT_SLACK_TIMEOUT_SECONDS": "nan"}, "positive finite"),
+            ({"JUDIKT_SLACK_MAX_PENDING_PER_REQUESTER": "bad"}, "integer between"),
+            ({"JUDIKT_SLACK_MAX_PENDING_PER_REQUESTER": "0"}, "integer between"),
+            ({"JUDIKT_SLACK_MAX_PENDING_PER_REQUESTER": "101"}, "integer between"),
+            ({"JUDIKT_SLACK_TIMEOUT_SECONDS": "0"}, "positive finite"),
+            ({"JUDIKT_SLACK_TIMEOUT_SECONDS": "bad"}, "positive finite"),
+            ({"JUDIKT_SLACK_TIMEOUT_SECONDS": "nan"}, "positive finite"),
         ]
         base = {
-            "VERDIKT_SLACK_WEBHOOK_URL": "https://hooks.slack.test/services/example",
-            "VERDIKT_SLACK_SIGNING_SECRET": "secret",
-            "VERDIKT_SLACK_APPROVER_IDS": "U-ONCALL",
+            "JUDIKT_SLACK_WEBHOOK_URL": "https://hooks.slack.test/services/example",
+            "JUDIKT_SLACK_SIGNING_SECRET": "secret",
+            "JUDIKT_SLACK_APPROVER_IDS": "U-ONCALL",
         }
         for index, (override, message) in enumerate(cases):
             with self.subTest(override=override), patch.dict(
@@ -373,8 +373,8 @@ class SlackApprovalWorkflowTest(unittest.TestCase):
             os.environ,
             {
                 **base,
-                "VERDIKT_SLACK_WEBHOOK_URL": "http://hooks.slack.test/path",
-                "VERDIKT_SLACK_ALLOW_INSECURE_HTTP": "true",
+                "JUDIKT_SLACK_WEBHOOK_URL": "http://hooks.slack.test/path",
+                "JUDIKT_SLACK_ALLOW_INSECURE_HTTP": "true",
             },
             clear=True,
         ):

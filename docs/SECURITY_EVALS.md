@@ -1,6 +1,6 @@
 # Security Evals And MCP-38 Coverage
 
-Verdikt maps its controls to the 38 threat categories in *MCP-38: A Comprehensive Threat Taxonomy for Model Context Protocol Systems (v1.0)*, arXiv:2603.18063.
+Judikt maps its controls to the 38 threat categories in *MCP-38: A Comprehensive Threat Taxonomy for Model Context Protocol Systems (v1.0)*, arXiv:2603.18063.
 
 The machine-readable source is [`config/mcp38_coverage.json`](../config/mcp38_coverage.json). `covered` means the primary mechanism has an implemented control and executable test. `partial` means a relevant control exists but material attack paths remain. `not_covered` is an explicit gap. Coverage is not a claim that a broad threat class has been eliminated.
 
@@ -37,6 +37,6 @@ High-value proofs include:
 
 The five explicit gaps are multi-tenant isolation (`MCP-06`), general SSRF/XSS defense (`MCP-09`), privacy inference across aggregated data (`MCP-25`), planning drift (`MCP-35`), and multi-agent context hijacking (`MCP-36`). MCP-31 is partial: the HTTP boundary rejects untrusted `Origin` values, while complete deployment-edge Host validation remains future work.
 
-The independent attack fixture at [`tests/fixtures/external_mcp_server.py`](../tests/fixtures/external_mcp_server.py) is intentionally outside the `verdikt` package. It implements MCP JSON-RPC itself and supports safe, text-only, paginated, server-request, result-injection, and rug-pull modes. This proves the protocol and security boundary against a separate process; it is not represented as a third-party production server.
+The independent attack fixture at [`tests/fixtures/external_mcp_server.py`](../tests/fixtures/external_mcp_server.py) is intentionally outside the `judikt` package. It implements MCP JSON-RPC itself and supports safe, text-only, paginated, server-request, result-injection, and rug-pull modes. This proves the protocol and security boundary against a separate process; it is not represented as a third-party production server.
 
 Named third-party proof is handled separately by the versioned [community interoperability harness](COMMUNITY_INTEROP.md). Its credential-free profiles target the official MCP filesystem and memory servers; its opt-in profile targets GitHub's official server in read-only mode. The report records tool count, pin verification, guarded safe-call decisions, response hashes, and audit integrity without retaining raw third-party content.

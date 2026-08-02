@@ -1,10 +1,10 @@
-# Verdikt Design Notes
+# Judikt Design Notes
 
-These notes capture the main engineering choices behind Verdikt and are useful for interview walkthroughs.
+These notes capture the main engineering choices behind Judikt and are useful for interview walkthroughs.
 
 ## Core Boundary
 
-Verdikt is a gateway, not an agent. It does not try to make the LLM smarter. It constrains what the agent can do when it reaches for production tools.
+Judikt is a gateway, not an agent. It does not try to make the LLM smarter. It constrains what the agent can do when it reaches for production tools.
 
 The central rule is:
 
@@ -35,7 +35,7 @@ Each request receives a deterministic risk score. The score is not a machine-lea
 
 ## Observability
 
-Verdikt emits three kinds of evidence:
+Judikt emits three kinds of evidence:
 
 - SQLite audit events for durable local evidence.
 - Prometheus metrics for aggregate operational signals.

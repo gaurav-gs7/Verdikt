@@ -11,13 +11,13 @@ import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
-from verdikt.secrets import (
+from judikt.secrets import (
     SecretBrokerError,
     read_aws_secret,
     read_vault_secret,
     resolve_configured_secret,
 )
-from verdikt.upstreams import UpstreamConfigError, load_upstream_servers
+from judikt.upstreams import UpstreamConfigError, load_upstream_servers
 
 
 class _AWSClient:
@@ -116,39 +116,39 @@ class SecretBrokerTest(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "VERDIKT_VAULT_ADDR": "https://vault.example.test",
-                "VERDIKT_VAULT_TOKEN": "vault-client-token",
-                "VERDIKT_VAULT_NAMESPACE": "platform",
-                "VERDIKT_SECRET_TIMEOUT_SECONDS": "1.5",
+                "JUDIKT_VAULT_ADDR": "https://vault.example.test",
+                "JUDIKT_VAULT_TOKEN": "vault-client-token",
+                "JUDIKT_VAULT_NAMESPACE": "platform",
+                "JUDIKT_SECRET_TIMEOUT_SECONDS": "1.5",
             },
             clear=True,
         ):
-            value = read_vault_secret("secret/data/verdikt/slack", "token", opener=opener)
+            value = read_vault_secret("secret/data/judikt/slack", "token", opener=opener)
 
         self.assertEqual(value, "vault-token")
         self.assertEqual(
             captured[0]["url"],
-            "https://vault.example.test/v1/secret/data/verdikt/slack",
+            "https://vault.example.test/v1/secret/data/judikt/slack",
         )
         self.assertEqual(captured[0]["headers"]["x-vault-token"], "vault-client-token")
         self.assertEqual(captured[0]["headers"]["x-vault-namespace"], "platform")
         self.assertEqual(captured[0]["timeout"], 1.5)
 
     def test_vault_requires_an_address_before_resolving_credentials(self) -> None:
-        with patch.dict(os.environ, {"VERDIKT_VAULT_TOKEN": "token"}, clear=True), self.assertRaisesRegex(
-            SecretBrokerError, "VERDIKT_VAULT_ADDR"
+        with patch.dict(os.environ, {"JUDIKT_VAULT_TOKEN": "token"}, clear=True), self.assertRaisesRegex(
+            SecretBrokerError, "JUDIKT_VAULT_ADDR"
         ):
             read_vault_secret("secret/data/app", "value")
 
     def test_vault_supports_kv_v1_and_normalizes_network_failures(self) -> None:
         environment = {
-            "VERDIKT_VAULT_ADDR": "http://127.0.0.1:8200",
-            "VERDIKT_VAULT_TOKEN": "development-token",
+            "JUDIKT_VAULT_ADDR": "http://127.0.0.1:8200",
+            "JUDIKT_VAULT_TOKEN": "development-token",
         }
         with patch.dict(os.environ, environment, clear=True):
             self.assertEqual(
                 read_vault_secret(
-                    "secret/verdikt",
+                    "secret/judikt",
                     "value",
                     opener=lambda request, timeout: _VaultResponse(
                         {"data": {"value": "kv-v1-secret"}}
@@ -158,7 +158,7 @@ class SecretBrokerTest(unittest.TestCase):
             )
             with self.assertRaisesRegex(SecretBrokerError, "unavailable"):
                 read_vault_secret(
-                    "secret/verdikt",
+                    "secret/judikt",
                     "value",
                     opener=lambda request, timeout: (_ for _ in ()).throw(
                         urllib.error.URLError("private connection detail")
@@ -167,8 +167,8 @@ class SecretBrokerTest(unittest.TestCase):
 
     def test_vault_rejects_non_success_malformed_oversized_and_non_string_responses(self) -> None:
         environment = {
-            "VERDIKT_VAULT_ADDR": "https://vault.example.test",
-            "VERDIKT_VAULT_TOKEN": "token",
+            "JUDIKT_VAULT_ADDR": "https://vault.example.test",
+            "JUDIKT_VAULT_TOKEN": "token",
         }
         cases = [
             (_VaultResponse({"errors": ["denied"]}, status=403), "HTTP 403"),
@@ -190,8 +190,8 @@ class SecretBrokerTest(unittest.TestCase):
 
     def test_vault_normalizes_http_and_unexpected_client_failures(self) -> None:
         environment = {
-            "VERDIKT_VAULT_ADDR": "https://vault.example.test",
-            "VERDIKT_VAULT_TOKEN": "token",
+            "JUDIKT_VAULT_ADDR": "https://vault.example.test",
+            "JUDIKT_VAULT_TOKEN": "token",
         }
         failures = [
             (
@@ -225,9 +225,9 @@ class SecretBrokerTest(unittest.TestCase):
             with self.subTest(value=value), patch.dict(
                 os.environ,
                 {
-                    "VERDIKT_VAULT_ADDR": "https://vault.example.test",
-                    "VERDIKT_VAULT_TOKEN": "token",
-                    "VERDIKT_SECRET_TIMEOUT_SECONDS": value,
+                    "JUDIKT_VAULT_ADDR": "https://vault.example.test",
+                    "JUDIKT_VAULT_TOKEN": "token",
+                    "JUDIKT_SECRET_TIMEOUT_SECONDS": value,
                 },
                 clear=True,
             ), self.assertRaisesRegex(SecretBrokerError, "positive finite"):
@@ -253,9 +253,9 @@ class SecretBrokerTest(unittest.TestCase):
         with patch.dict(sys.modules, {"boto3": boto3}), patch.dict(
             os.environ,
             {
-                "VERDIKT_VAULT_ADDR": "https://vault.example.test",
-                "VERDIKT_VAULT_TOKEN_SECRET_ARN": "vault-token-secret",
-                "VERDIKT_VAULT_TOKEN_SECRET_JSON_KEY": "token",
+                "JUDIKT_VAULT_ADDR": "https://vault.example.test",
+                "JUDIKT_VAULT_TOKEN_SECRET_ARN": "vault-token-secret",
+                "JUDIKT_VAULT_TOKEN_SECRET_JSON_KEY": "token",
             },
             clear=True,
         ):
@@ -275,7 +275,7 @@ class SecretBrokerTest(unittest.TestCase):
         for address in invalid_addresses:
             with self.subTest(address=address), patch.dict(
                 os.environ,
-                {"VERDIKT_VAULT_ADDR": address, "VERDIKT_VAULT_TOKEN": "token"},
+                {"JUDIKT_VAULT_ADDR": address, "JUDIKT_VAULT_TOKEN": "token"},
                 clear=True,
             ), self.assertRaises(SecretBrokerError):
                 read_vault_secret("secret/data/app", "value")
@@ -283,8 +283,8 @@ class SecretBrokerTest(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "VERDIKT_VAULT_ADDR": "https://vault.example.test",
-                "VERDIKT_VAULT_TOKEN": "token",
+                "JUDIKT_VAULT_ADDR": "https://vault.example.test",
+                "JUDIKT_VAULT_TOKEN": "token",
             },
             clear=True,
         ):
@@ -301,9 +301,9 @@ class SecretBrokerTest(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "VERDIKT_VAULT_ADDR": "http://vault.example.test/base",
-                "VERDIKT_VAULT_TOKEN": "token",
-                "VERDIKT_VAULT_ALLOW_INSECURE_HTTP": "true",
+                "JUDIKT_VAULT_ADDR": "http://vault.example.test/base",
+                "JUDIKT_VAULT_TOKEN": "token",
+                "JUDIKT_VAULT_ALLOW_INSECURE_HTTP": "true",
             },
             clear=True,
         ):
@@ -377,7 +377,7 @@ class SecretBrokerTest(unittest.TestCase):
 
         with patch.dict(
             os.environ, {"VAULT_SECRET": "secret/data/app"}, clear=True
-        ), patch("verdikt.secrets.read_vault_secret", return_value="vault-value") as reader:
+        ), patch("judikt.secrets.read_vault_secret", return_value="vault-value") as reader:
             self.assertEqual(
                 resolve_configured_secret(
                     direct_env="DIRECT_SECRET",
@@ -411,7 +411,7 @@ class SecretBrokerTest(unittest.TestCase):
                                 "command": ["company-mcp-server"],
                                 "env": {
                                     "UPSTREAM_API_TOKEN": {
-                                        "from_vault": "secret/data/verdikt/company",
+                                        "from_vault": "secret/data/judikt/company",
                                         "json_key": "token",
                                     }
                                 },
@@ -423,12 +423,12 @@ class SecretBrokerTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "VERDIKT_VAULT_ADDR": "https://vault.example.test",
-                    "VERDIKT_VAULT_TOKEN": "vault-client-token",
+                    "JUDIKT_VAULT_ADDR": "https://vault.example.test",
+                    "JUDIKT_VAULT_TOKEN": "vault-client-token",
                 },
                 clear=True,
             ), patch(
-                "verdikt.secrets.urllib.request.urlopen",
+                "judikt.secrets.urllib.request.urlopen",
                 return_value=_VaultResponse(
                     {"data": {"data": {"token": "operator-managed-token"}}}
                 ),
@@ -466,8 +466,8 @@ class SecretBrokerTest(unittest.TestCase):
                 if "from_vault" in source:
                     environment.update(
                         {
-                            "VERDIKT_VAULT_ADDR": "https://vault.example.test",
-                            "VERDIKT_VAULT_TOKEN": "vault-client-token",
+                            "JUDIKT_VAULT_ADDR": "https://vault.example.test",
+                            "JUDIKT_VAULT_TOKEN": "vault-client-token",
                         }
                     )
                 with patch.dict(os.environ, environment, clear=True), self.assertRaises(

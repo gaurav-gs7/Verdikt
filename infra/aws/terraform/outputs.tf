@@ -19,7 +19,7 @@ output "public_dns_name" {
 }
 
 output "dashboard_url" {
-  description = "Verdikt service URL. In real-mcp mode, use /mcp for MCP clients and /healthz for health checks."
+  description = "Judikt service URL. In real-mcp mode, use /mcp for MCP clients and /healthz for health checks."
   value       = "http://${aws_instance.app.public_dns}:${var.app_port}"
 }
 

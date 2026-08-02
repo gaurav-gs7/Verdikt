@@ -10,7 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from verdikt.performance import (
+from judikt.performance import (
     PerformanceBenchmarkError,
     report_passes,
     run_gateway_benchmark,
@@ -23,11 +23,11 @@ POLICY = PROJECT_ROOT / "config" / "policies.yaml"
 
 class PerformanceBenchmarkTest(unittest.TestCase):
     def test_full_pipeline_report_contains_verifiable_privacy_safe_evidence(self) -> None:
-        with patch.dict(os.environ, {"VERDIKT_TELEMETRY": "console"}, clear=False):
+        with patch.dict(os.environ, {"JUDIKT_TELEMETRY": "console"}, clear=False):
             report = run_gateway_benchmark(POLICY, iterations=8, warmup=2)
-            self.assertEqual(os.environ["VERDIKT_TELEMETRY"], "console")
+            self.assertEqual(os.environ["JUDIKT_TELEMETRY"], "console")
 
-        self.assertEqual(report["schema_version"], "verdikt.performance.v1")
+        self.assertEqual(report["schema_version"], "judikt.performance.v1")
         self.assertEqual(report["results"]["allowed"], 8)
         self.assertEqual(report["results"]["denied"], 0)
         self.assertEqual(report["results"]["audit_events_verified"], 10)
@@ -116,19 +116,19 @@ class PerformanceBenchmarkTest(unittest.TestCase):
             with self.subTest(warmup=warmup), patch.dict(
                 os.environ,
                 {
-                    "VERDIKT_AUDIT_SINK": "operator-siem",
-                    "VERDIKT_TOOL_PIN_PATH": "/operator/tool-pins.json",
+                    "JUDIKT_AUDIT_SINK": "operator-siem",
+                    "JUDIKT_TOOL_PIN_PATH": "/operator/tool-pins.json",
                 },
                 clear=False,
             ):
                 with patch(
-                    "verdikt.performance.VerdiktOpsRuntime", return_value=runtime
+                    "judikt.performance.JudiktOpsRuntime", return_value=runtime
                 ), self.assertRaisesRegex(PerformanceBenchmarkError, "denied"):
                     run_gateway_benchmark(POLICY, iterations=1, warmup=warmup)
                 self.assertTrue(runtime.closed)
-                self.assertEqual(os.environ["VERDIKT_AUDIT_SINK"], "operator-siem")
+                self.assertEqual(os.environ["JUDIKT_AUDIT_SINK"], "operator-siem")
                 self.assertEqual(
-                    os.environ["VERDIKT_TOOL_PIN_PATH"],
+                    os.environ["JUDIKT_TOOL_PIN_PATH"],
                     "/operator/tool-pins.json",
                 )
 
@@ -148,7 +148,7 @@ class PerformanceBenchmarkTest(unittest.TestCase):
 
         runtime = InvalidAuditRuntime()
         with patch(
-            "verdikt.performance.VerdiktOpsRuntime", return_value=runtime
+            "judikt.performance.JudiktOpsRuntime", return_value=runtime
         ), self.assertRaisesRegex(PerformanceBenchmarkError, "audit evidence"):
             run_gateway_benchmark(POLICY, iterations=2, warmup=1)
         self.assertTrue(runtime.closed)
@@ -160,7 +160,7 @@ class PerformanceBenchmarkTest(unittest.TestCase):
                 [
                     sys.executable,
                     "-m",
-                    "verdikt.cli",
+                    "judikt.cli",
                     "performance",
                     "--iterations",
                     "2",
@@ -180,7 +180,7 @@ class PerformanceBenchmarkTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 1)
             report = json.loads(output.read_text())
-        self.assertEqual(report["schema_version"], "verdikt.performance.v1")
+        self.assertEqual(report["schema_version"], "judikt.performance.v1")
         self.assertEqual(report["results"]["allowed"], 2)
 
 

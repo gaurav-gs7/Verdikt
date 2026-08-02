@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from verdikt.attackbench import AttackBenchError, report_passes, run_attackbench
+from judikt.attackbench import AttackBenchError, report_passes, run_attackbench
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +22,7 @@ class AttackBenchTest(unittest.TestCase):
         report = run_attackbench(
             FIXTURE,
             POLICY,
-            dataset_id="verdikt-tier2-smoke",
+            dataset_id="judikt-tier2-smoke",
             expected_samples=8,
         )
 
@@ -185,7 +185,7 @@ class AttackBenchTest(unittest.TestCase):
                 [
                     sys.executable,
                     "-m",
-                    "verdikt.cli",
+                    "judikt.cli",
                     "attackbench",
                     str(dataset),
                     "--min-recall",
@@ -207,7 +207,7 @@ class AttackBenchTest(unittest.TestCase):
                 [
                     sys.executable,
                     "-m",
-                    "verdikt.cli",
+                    "judikt.cli",
                     "attackbench",
                     str(FIXTURE),
                     "--min-recall",

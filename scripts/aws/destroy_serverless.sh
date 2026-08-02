@@ -6,8 +6,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TF_DIR="${ROOT_DIR}/infra/aws/serverless"
 
 REGION="${AWS_REGION:-us-east-1}"
-APP_NAME="${VERDIKT_SERVERLESS_APP_NAME:-verdikt-serverless}"
-ZIP_PATH="${ROOT_DIR}/build/verdikt-serverless.zip"
+APP_NAME="${JUDIKT_SERVERLESS_APP_NAME:-judikt-serverless}"
+ZIP_PATH="${ROOT_DIR}/build/judikt-serverless.zip"
 
 "${ROOT_DIR}/scripts/aws/preflight_identity.sh" >/dev/null
 

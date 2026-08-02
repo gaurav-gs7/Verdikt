@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from verdikt.evals import load_mcp38_coverage, run_evals
+from judikt.evals import load_mcp38_coverage, run_evals
 
 
 class EvalHarnessTest(unittest.TestCase):

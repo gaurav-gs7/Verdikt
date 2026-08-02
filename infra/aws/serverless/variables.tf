@@ -1,5 +1,5 @@
 variable "aws_region" {
-  description = "AWS region for the serverless Verdikt deployment."
+  description = "AWS region for the serverless Judikt deployment."
   type        = string
   default     = "us-east-1"
 }
@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "app_name" {
   description = "Name prefix for all serverless resources."
   type        = string
-  default     = "verdikt-serverless"
+  default     = "judikt-serverless"
 }
 
 variable "lambda_zip_path" {

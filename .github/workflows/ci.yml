@@ -28,7 +28,7 @@ jobs:
         run: ./scripts/run_release_tests.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: verdikt-ci-evidence
+          name: judikt-ci-evidence
           path: |
             build/release-coverage.json
             build/critical-coverage.json
@@ -53,10 +53,10 @@ jobs:
       - name: Terraform fmt
         run: terraform fmt -check -recursive infra/aws/terraform infra/aws/serverless
       - name: Validate CloudFormation
-        run: cfn-lint infra/aws/cloudformation/verdikt-ec2.yml
+        run: cfn-lint infra/aws/cloudformation/judikt-ec2.yml
       - name: Render production Helm chart
         run: >-
-          helm template verdikt charts/verdikt
+          helm template judikt charts/judikt
           --set-string auth.bearerToken=ci-bearer-token
           --set-string auth.resourceUri=http://127.0.0.1:8080/mcp
           --set-string approvalSecret=ci-approval-secret
@@ -81,8 +81,8 @@ jobs:
           context: .
           load: true
           push: false
-          tags: verdikt:ci
+          tags: judikt:ci
       - name: Verify production runtime dependencies
         run: >-
-          docker run --rm --entrypoint python verdikt:ci -c
+          docker run --rm --entrypoint python judikt:ci -c
           "import boto3, jwt, mcp, openinference.semconv, opentelemetry, redis"

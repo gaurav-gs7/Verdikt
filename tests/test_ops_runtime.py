@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from verdikt.ops_runtime import VerdiktOpsRuntime
-from verdikt.real_mcp import register_tools
-from verdikt.request_context import bind_authenticated_subject, reset_authenticated_subject
+from judikt.ops_runtime import JudiktOpsRuntime
+from judikt.real_mcp import register_tools
+from judikt.request_context import bind_authenticated_subject, reset_authenticated_subject
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -15,16 +15,16 @@ POLICY = PROJECT_ROOT / "config" / "policies.yaml"
 ROLLBACK_PLAN = "verify rollout health and restore previous release if errors increase"
 
 
-class VerdiktOpsRuntimeTest(unittest.TestCase):
+class JudiktOpsRuntimeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def runtime(self) -> VerdiktOpsRuntime:
+    def runtime(self) -> JudiktOpsRuntime:
         db = Path(self.temp_dir.name) / "audit.db"
-        return VerdiktOpsRuntime(POLICY, db, circuit_failure_threshold=2, circuit_cooldown_seconds=60)
+        return JudiktOpsRuntime(POLICY, db, circuit_failure_threshold=2, circuit_cooldown_seconds=60)
 
     def test_real_runtime_allows_health_and_audits_call(self) -> None:
         runtime = self.runtime()
@@ -163,7 +163,7 @@ class VerdiktOpsRuntimeTest(unittest.TestCase):
         mcp = FakeMCP()
         try:
             register_tools(mcp, runtime)
-            state = mcp.tools["verdikt.runtime_state"]()  # type: ignore[operator]
+            state = mcp.tools["judikt.runtime_state"]()  # type: ignore[operator]
             self.assertEqual(state["rate_limiter"], {"mode": "local"})
         finally:
             runtime.close()

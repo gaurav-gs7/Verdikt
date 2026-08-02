@@ -2,5 +2,5 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-PYTHONPATH=src exec ./scripts/python.sh -m verdikt.cli eval "$@"
+PYTHONPATH=src exec ./scripts/python.sh -m judikt.cli eval "$@"
 

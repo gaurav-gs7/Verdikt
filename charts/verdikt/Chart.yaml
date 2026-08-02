@@ -1,6 +1,0 @@
-apiVersion: v2
-name: verdikt
-description: Real MCP AIOps guardrail gateway with policy, approvals, audit, metrics, and tracing.
-type: application
-version: 0.2.0
-appVersion: "0.2.0"

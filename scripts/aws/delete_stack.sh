@@ -3,7 +3,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../legacy_env.sh"
 
 REGION="${AWS_REGION:-us-east-1}"
-STACK_NAME="${VERDIKT_STACK_NAME:-verdikt-free-tier}"
+STACK_NAME="${JUDIKT_STACK_NAME:-judikt-free-tier}"
 
 ./scripts/aws/preflight_identity.sh >/dev/null
 

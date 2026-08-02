@@ -8,10 +8,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from verdikt.approval import ApprovalAuthority
-from verdikt.audit import AuditStore
-from verdikt.auth import AuthConfig
-from verdikt.slack_approval import SlackApprovalWorkflow
+from judikt.approval import ApprovalAuthority
+from judikt.audit import AuditStore
+from judikt.auth import AuthConfig
+from judikt.slack_approval import SlackApprovalWorkflow
 
 
 class _SecretsManagerClient:
@@ -36,8 +36,8 @@ class SecretConsumerIntegrationTest(unittest.TestCase):
         with patch.dict(sys.modules, {"boto3": boto3}), patch.dict(
             os.environ,
             {
-                "VERDIKT_HTTP_BEARER_TOKEN_SECRET_ARN": "auth-secret",
-                "VERDIKT_APPROVAL_SECRET_ARN": "approval-secret",
+                "JUDIKT_HTTP_BEARER_TOKEN_SECRET_ARN": "auth-secret",
+                "JUDIKT_APPROVAL_SECRET_ARN": "approval-secret",
             },
             clear=True,
         ):
@@ -68,8 +68,8 @@ class SecretConsumerIntegrationTest(unittest.TestCase):
         ), patch.dict(
             os.environ,
             {
-                "VERDIKT_AUDIT_HMAC_SECRET_ARN": "audit-secret",
-                "VERDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
+                "JUDIKT_AUDIT_HMAC_SECRET_ARN": "audit-secret",
+                "JUDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
             },
             clear=True,
         ):
@@ -107,9 +107,9 @@ class SecretConsumerIntegrationTest(unittest.TestCase):
         ), patch.dict(
             os.environ,
             {
-                "VERDIKT_SLACK_WEBHOOK_SECRET_ARN": "slack-webhook",
-                "VERDIKT_SLACK_SIGNING_SECRET_ARN": "slack-signing",
-                "VERDIKT_SLACK_APPROVER_IDS": "U-ONCALL",
+                "JUDIKT_SLACK_WEBHOOK_SECRET_ARN": "slack-webhook",
+                "JUDIKT_SLACK_SIGNING_SECRET_ARN": "slack-signing",
+                "JUDIKT_SLACK_APPROVER_IDS": "U-ONCALL",
             },
             clear=True,
         ):

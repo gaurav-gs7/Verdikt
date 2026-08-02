@@ -1,10 +1,13 @@
-.PHONY: test demo eval attackbench-smoke performance-smoke failure-test interop-community dashboard real-mcp trace docker-build observability-up observability-down helm-template aws-build-push aws-deploy aws-delete terraform-deploy terraform-destroy terraform-fmt serverless-package serverless-deploy serverless-destroy serverless-fmt
+.PHONY: test demo demo-recording eval attackbench-smoke performance-smoke failure-test interop-community dashboard real-mcp trace docker-build observability-up observability-down helm-template aws-build-push aws-deploy aws-delete terraform-deploy terraform-destroy terraform-fmt serverless-package serverless-deploy serverless-destroy serverless-fmt
 
 test:
 	./scripts/run_release_tests.sh
 
 demo:
-	./scripts/run_demo.sh --audit-db /tmp/verdikt-demo.db
+	./scripts/run_demo.sh --audit-db /tmp/judikt-demo.db
+
+demo-recording:
+	PYTHONPATH=src ./scripts/python.sh scripts/record_demo.py
 
 eval:
 	./scripts/run_evals.sh
@@ -28,10 +31,10 @@ real-mcp:
 	./scripts/run_real_mcp_http.sh
 
 trace:
-	VERDIKT_TELEMETRY=console ./scripts/run_demo.sh --audit-db /tmp/verdikt-trace.db
+	JUDIKT_TELEMETRY=console ./scripts/run_demo.sh --audit-db /tmp/judikt-trace.db
 
 docker-build:
-	docker build -t verdikt:local .
+	docker build -t judikt:local .
 
 observability-up:
 	docker compose -f deploy/observability/docker-compose.yml up --build
@@ -40,7 +43,7 @@ observability-down:
 	docker compose -f deploy/observability/docker-compose.yml down
 
 helm-template:
-	helm template verdikt charts/verdikt \
+	helm template judikt charts/judikt \
 		--set-string auth.bearerToken=local-render-token \
 		--set-string auth.resourceUri=http://127.0.0.1:8080/mcp \
 		--set-string approvalSecret=local-render-approval-secret \

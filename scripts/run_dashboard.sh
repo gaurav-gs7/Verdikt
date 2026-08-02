@@ -2,4 +2,4 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-PYTHONPATH=src exec ./scripts/python.sh -m verdikt.cli dashboard "$@"
+PYTHONPATH=src exec ./scripts/python.sh -m judikt.cli dashboard "$@"

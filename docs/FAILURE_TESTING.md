@@ -1,6 +1,6 @@
 # Failure Testing
 
-Verdikt includes a failure-mode harness so safety controls can be tested without waiting for real incidents.
+Judikt includes a failure-mode harness so safety controls can be tested without waiting for real incidents.
 
 Run:
 

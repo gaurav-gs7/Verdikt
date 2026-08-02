@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from verdikt.audit import AuditStore
+from judikt.audit import AuditStore
 
 
 def _record(store: AuditStore) -> None:
@@ -29,10 +29,10 @@ class AuditHardeningTest(unittest.TestCase):
     def test_signature_required_fails_closed_without_key(self) -> None:
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ,
-            {"VERDIKT_AUDIT_SIGNATURE_REQUIRED": "true", "VERDIKT_AUDIT_HMAC_SECRET": ""},
+            {"JUDIKT_AUDIT_SIGNATURE_REQUIRED": "true", "JUDIKT_AUDIT_HMAC_SECRET": ""},
             clear=False,
         ):
-            with self.assertRaisesRegex(RuntimeError, "requires VERDIKT_AUDIT_HMAC_SECRET"):
+            with self.assertRaisesRegex(RuntimeError, "requires JUDIKT_AUDIT_HMAC_SECRET"):
                 AuditStore(Path(directory) / "audit.db")
 
     def test_verify_on_startup_rejects_tampered_record(self) -> None:
@@ -40,7 +40,7 @@ class AuditHardeningTest(unittest.TestCase):
             path = Path(directory) / "audit.db"
             with patch.dict(
                 os.environ,
-                {"VERDIKT_AUDIT_HMAC_SECRET": "test-key"},
+                {"JUDIKT_AUDIT_HMAC_SECRET": "test-key"},
                 clear=False,
             ):
                 store = AuditStore(path)
@@ -54,9 +54,9 @@ class AuditHardeningTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "VERDIKT_AUDIT_HMAC_SECRET": "test-key",
-                    "VERDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
-                    "VERDIKT_AUDIT_VERIFY_ON_STARTUP": "true",
+                    "JUDIKT_AUDIT_HMAC_SECRET": "test-key",
+                    "JUDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
+                    "JUDIKT_AUDIT_VERIFY_ON_STARTUP": "true",
                 },
                 clear=False,
             ):
@@ -67,8 +67,8 @@ class AuditHardeningTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ,
             {
-                "VERDIKT_AUDIT_HMAC_SECRET": "test-key",
-                "VERDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
+                "JUDIKT_AUDIT_HMAC_SECRET": "test-key",
+                "JUDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
             },
             clear=False,
         ):
@@ -84,7 +84,7 @@ class AuditHardeningTest(unittest.TestCase):
 
     def test_multiple_events_form_one_contiguous_chain(self) -> None:
         with tempfile.TemporaryDirectory() as directory, patch.dict(
-            os.environ, {"VERDIKT_AUDIT_HMAC_SECRET": "test-key"}, clear=False
+            os.environ, {"JUDIKT_AUDIT_HMAC_SECRET": "test-key"}, clear=False
         ):
             store = AuditStore(Path(directory) / "audit.db")
             try:
@@ -103,16 +103,16 @@ class AuditHardeningTest(unittest.TestCase):
     def test_wrong_signing_key_is_detected_on_startup(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "audit.db"
-            with patch.dict(os.environ, {"VERDIKT_AUDIT_HMAC_SECRET": "first-key"}, clear=False):
+            with patch.dict(os.environ, {"JUDIKT_AUDIT_HMAC_SECRET": "first-key"}, clear=False):
                 store = AuditStore(path)
                 _record(store)
                 store.close()
             with patch.dict(
                 os.environ,
                 {
-                    "VERDIKT_AUDIT_HMAC_SECRET": "wrong-key",
-                    "VERDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
-                    "VERDIKT_AUDIT_VERIFY_ON_STARTUP": "true",
+                    "JUDIKT_AUDIT_HMAC_SECRET": "wrong-key",
+                    "JUDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
+                    "JUDIKT_AUDIT_VERIFY_ON_STARTUP": "true",
                 },
                 clear=False,
             ):
@@ -121,7 +121,7 @@ class AuditHardeningTest(unittest.TestCase):
 
     def test_signature_and_link_tampering_are_reported_precisely(self) -> None:
         with tempfile.TemporaryDirectory() as directory, patch.dict(
-            os.environ, {"VERDIKT_AUDIT_HMAC_SECRET": "test-key"}, clear=False
+            os.environ, {"JUDIKT_AUDIT_HMAC_SECRET": "test-key"}, clear=False
         ):
             path = Path(directory) / "audit.db"
             store = AuditStore(path)
@@ -162,9 +162,9 @@ class AuditHardeningTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "VERDIKT_AUDIT_HMAC_SECRET": "test-key",
-                    "VERDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
-                    "VERDIKT_AUDIT_VERIFY_ON_STARTUP": "true",
+                    "JUDIKT_AUDIT_HMAC_SECRET": "test-key",
+                    "JUDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
+                    "JUDIKT_AUDIT_VERIFY_ON_STARTUP": "true",
                 },
                 clear=False,
             ):
@@ -173,7 +173,7 @@ class AuditHardeningTest(unittest.TestCase):
 
     def test_concurrent_writers_preserve_chain_integrity(self) -> None:
         with tempfile.TemporaryDirectory() as directory, patch.dict(
-            os.environ, {"VERDIKT_AUDIT_HMAC_SECRET": "test-key"}, clear=False
+            os.environ, {"JUDIKT_AUDIT_HMAC_SECRET": "test-key"}, clear=False
         ):
             store = AuditStore(Path(directory) / "audit.db")
             threads = [threading.Thread(target=_record, args=(store,)) for _ in range(24)]
@@ -190,7 +190,7 @@ class AuditHardeningTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "audit.db"
             with patch.dict(
-                os.environ, {"VERDIKT_AUDIT_HMAC_SECRET": "test-key"}, clear=False
+                os.environ, {"JUDIKT_AUDIT_HMAC_SECRET": "test-key"}, clear=False
             ):
                 store = AuditStore(path)
                 _record(store)
@@ -202,8 +202,8 @@ class AuditHardeningTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "VERDIKT_AUDIT_HMAC_SECRET": "test-key",
-                    "VERDIKT_AUDIT_VERIFY_ON_STARTUP": "true",
+                    "JUDIKT_AUDIT_HMAC_SECRET": "test-key",
+                    "JUDIKT_AUDIT_VERIFY_ON_STARTUP": "true",
                 },
                 clear=False,
             ):

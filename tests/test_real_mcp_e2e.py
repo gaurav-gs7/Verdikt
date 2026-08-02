@@ -14,7 +14,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from verdikt.auth import create_hs256_jwt
+from judikt.auth import create_hs256_jwt
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -35,23 +35,23 @@ class RealMCPStreamableHTTPEndToEndTest(unittest.TestCase):
         environment = {
             **os.environ,
             "PYTHONPATH": str(PROJECT_ROOT / "src"),
-            "VERDIKT_HTTP_BEARER_TOKEN": "mcp-e2e-token",
-            "VERDIKT_APPROVAL_SECRET": "mcp-e2e-approval-secret",
-            "VERDIKT_AUDIT_HMAC_SECRET": "mcp-e2e-audit-secret",
-            "VERDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
-            "VERDIKT_AUDIT_VERIFY_ON_STARTUP": "true",
-            "VERDIKT_AUDIT_SINK": "none",
-            "VERDIKT_TELEMETRY": "disabled",
-            "VERDIKT_TOOL_PIN_PATH": str(root / "pins.json"),
-            "VERDIKT_UPSTREAM_CONFIG": "",
-            "VERDIKT_ALLOW_DIRECT_APPROVAL": "true",
+            "JUDIKT_HTTP_BEARER_TOKEN": "mcp-e2e-token",
+            "JUDIKT_APPROVAL_SECRET": "mcp-e2e-approval-secret",
+            "JUDIKT_AUDIT_HMAC_SECRET": "mcp-e2e-audit-secret",
+            "JUDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
+            "JUDIKT_AUDIT_VERIFY_ON_STARTUP": "true",
+            "JUDIKT_AUDIT_SINK": "none",
+            "JUDIKT_TELEMETRY": "disabled",
+            "JUDIKT_TOOL_PIN_PATH": str(root / "pins.json"),
+            "JUDIKT_UPSTREAM_CONFIG": "",
+            "JUDIKT_ALLOW_DIRECT_APPROVAL": "true",
             "GROQ_API_KEY": "",
         }
         cls.process = subprocess.Popen(
             [
                 sys.executable,
                 "-m",
-                "verdikt.cli",
+                "judikt.cli",
                 "--audit-db",
                 str(root / "audit.db"),
                 "serve-real-mcp",
@@ -140,7 +140,7 @@ class RealMCPStreamableHTTPEndToEndTest(unittest.TestCase):
             headers={"Authorization": "Bearer mcp-e2e-token"},
         )
         with urllib.request.urlopen(metrics, timeout=3) as response:
-            self.assertIn("verdikt_tool_calls_total", response.read().decode())
+            self.assertIn("judikt_tool_calls_total", response.read().decode())
 
         callback = urllib.request.Request(
             f"{self.base_url}/integrations/slack/actions",
@@ -210,13 +210,13 @@ class RealMCPStreamableHTTPEndToEndTest(unittest.TestCase):
                         "incident.create",
                         "incident.attach_evidence",
                         "incident.timeline",
-                        "verdikt.issue_approval",
-                        "verdikt.request_approval",
-                        "verdikt.approval_status",
-                        "verdikt.call_upstream",
-                        "verdikt.set_tool_enabled",
-                        "verdikt.set_server_enabled",
-                        "verdikt.runtime_state",
+                        "judikt.issue_approval",
+                        "judikt.request_approval",
+                        "judikt.approval_status",
+                        "judikt.call_upstream",
+                        "judikt.set_tool_enabled",
+                        "judikt.set_server_enabled",
+                        "judikt.runtime_state",
                     }
                     self.assertEqual(names, expected)
 
@@ -287,11 +287,11 @@ class RealMCPStreamableHTTPEndToEndTest(unittest.TestCase):
                         "incident.timeline", {"incident_id": incident_id}
                     )
                     results["unknown_upstream"] = await call(
-                        "verdikt.call_upstream",
+                        "judikt.call_upstream",
                         {"server": "missing", "tool": "missing.tool", "arguments": {}},
                     )
                     results["approval_request"] = await call(
-                        "verdikt.request_approval",
+                        "judikt.request_approval",
                         {
                             "actor": "sre-oncall",
                             "reason": "test disabled Slack flow",
@@ -301,7 +301,7 @@ class RealMCPStreamableHTTPEndToEndTest(unittest.TestCase):
                         },
                     )
                     results["approval_status"] = await call(
-                        "verdikt.approval_status",
+                        "judikt.approval_status",
                         {"request_id": "missing", "actor": "sre-oncall"},
                     )
 
@@ -312,7 +312,7 @@ class RealMCPStreamableHTTPEndToEndTest(unittest.TestCase):
                         "rollback_plan": "verify health then restore the previous deployment",
                     }
                     approval = await call(
-                        "verdikt.issue_approval",
+                        "judikt.issue_approval",
                         {
                             "actor": "sre-oncall",
                             "reason": "approved E2E restart",
@@ -327,26 +327,26 @@ class RealMCPStreamableHTTPEndToEndTest(unittest.TestCase):
                     )
 
                     results["disabled_tool"] = await call(
-                        "verdikt.set_tool_enabled",
+                        "judikt.set_tool_enabled",
                         {"tool": "platform.health", "enabled": False},
                     )
                     results["killed_health"] = await call(
                         "platform.health", {"service": "payments-api"}
                     )
                     await call(
-                        "verdikt.set_tool_enabled",
+                        "judikt.set_tool_enabled",
                         {"tool": "platform.health", "enabled": True},
                     )
                     results["disabled_server"] = await call(
-                        "verdikt.set_server_enabled",
+                        "judikt.set_server_enabled",
                         {"server": "incident", "enabled": False},
                     )
                     await call(
-                        "verdikt.set_server_enabled",
+                        "judikt.set_server_enabled",
                         {"server": "incident", "enabled": True},
                     )
                     results["runtime_state"] = await call(
-                        "verdikt.runtime_state", {"limit": 100}
+                        "judikt.runtime_state", {"limit": 100}
                     )
         return results
 
@@ -357,33 +357,33 @@ class RealMCPJWTAuthorizationEndToEndTest(unittest.TestCase):
         cls.temp_dir = tempfile.TemporaryDirectory()
         root = Path(cls.temp_dir.name)
         cls.port = _free_port()
-        cls.issuer = "https://issuer.verdikt.test"
-        cls.audience = "verdikt-e2e"
+        cls.issuer = "https://issuer.judikt.test"
+        cls.audience = "judikt-e2e"
         cls.jwt_secret = "jwt-e2e-signing-secret"
         environment = {
             **os.environ,
             "PYTHONPATH": str(PROJECT_ROOT / "src"),
-            "VERDIKT_JWT_HS256_SECRET": cls.jwt_secret,
-            "VERDIKT_JWT_ISSUER": cls.issuer,
-            "VERDIKT_JWT_AUDIENCE": cls.audience,
-            "VERDIKT_AUTHORIZATION_SERVER": cls.issuer,
-            "VERDIKT_RESOURCE_URI": f"http://127.0.0.1:{cls.port}/mcp",
-            "VERDIKT_REQUIRED_SCOPES": "mcp:tools",
-            "VERDIKT_ADMIN_SCOPE": "mcp:admin",
-            "VERDIKT_APPROVAL_SECRET": "jwt-e2e-approval-secret",
-            "VERDIKT_AUDIT_HMAC_SECRET": "jwt-e2e-audit-secret",
-            "VERDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
-            "VERDIKT_AUDIT_SINK": "none",
-            "VERDIKT_TELEMETRY": "disabled",
-            "VERDIKT_TOOL_PIN_PATH": str(root / "pins.json"),
-            "VERDIKT_UPSTREAM_CONFIG": "",
-            "VERDIKT_ALLOW_DIRECT_APPROVAL": "false",
+            "JUDIKT_JWT_HS256_SECRET": cls.jwt_secret,
+            "JUDIKT_JWT_ISSUER": cls.issuer,
+            "JUDIKT_JWT_AUDIENCE": cls.audience,
+            "JUDIKT_AUTHORIZATION_SERVER": cls.issuer,
+            "JUDIKT_RESOURCE_URI": f"http://127.0.0.1:{cls.port}/mcp",
+            "JUDIKT_REQUIRED_SCOPES": "mcp:tools",
+            "JUDIKT_ADMIN_SCOPE": "mcp:admin",
+            "JUDIKT_APPROVAL_SECRET": "jwt-e2e-approval-secret",
+            "JUDIKT_AUDIT_HMAC_SECRET": "jwt-e2e-audit-secret",
+            "JUDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
+            "JUDIKT_AUDIT_SINK": "none",
+            "JUDIKT_TELEMETRY": "disabled",
+            "JUDIKT_TOOL_PIN_PATH": str(root / "pins.json"),
+            "JUDIKT_UPSTREAM_CONFIG": "",
+            "JUDIKT_ALLOW_DIRECT_APPROVAL": "false",
         }
         cls.process = subprocess.Popen(
             [
                 sys.executable,
                 "-m",
-                "verdikt.cli",
+                "judikt.cli",
                 "--audit-db",
                 str(root / "audit.db"),
                 "serve-real-mcp",
@@ -500,10 +500,10 @@ class RealMCPJWTAuthorizationEndToEndTest(unittest.TestCase):
                 ),
                 (
                     "admin_action",
-                    "verdikt.set_tool_enabled",
+                    "judikt.set_tool_enabled",
                     {"tool": "platform.health", "enabled": False},
                 ),
-                ("runtime_state", "verdikt.runtime_state", {}),
+                ("runtime_state", "judikt.runtime_state", {}),
             ],
         )
 
@@ -513,7 +513,7 @@ class RealMCPJWTAuthorizationEndToEndTest(unittest.TestCase):
             [
                 (
                     "direct_approval",
-                    "verdikt.issue_approval",
+                    "judikt.issue_approval",
                     {
                         "actor": "platform-admin",
                         "reason": "should require human approval",
@@ -524,16 +524,16 @@ class RealMCPJWTAuthorizationEndToEndTest(unittest.TestCase):
                 ),
                 (
                     "disabled",
-                    "verdikt.set_tool_enabled",
+                    "judikt.set_tool_enabled",
                     {"tool": "platform.health", "enabled": False},
                 ),
                 ("killed_health", "platform.health", {"service": "payments-api"}),
                 (
                     "enabled",
-                    "verdikt.set_tool_enabled",
+                    "judikt.set_tool_enabled",
                     {"tool": "platform.health", "enabled": True},
                 ),
-                ("runtime_state", "verdikt.runtime_state", {}),
+                ("runtime_state", "judikt.runtime_state", {}),
             ],
         )
 

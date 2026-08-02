@@ -11,8 +11,8 @@ import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
-from verdikt.audit import AuditStore
-from verdikt.audit_sink import JsonlAuditSink, NullAuditSink, SiemAuditSink, build_audit_sink
+from judikt.audit import AuditStore
+from judikt.audit_sink import JsonlAuditSink, NullAuditSink, SiemAuditSink, build_audit_sink
 
 
 class _Response:
@@ -62,14 +62,14 @@ class SiemAuditSinkTest(unittest.TestCase):
     def test_builder_selects_none_jsonl_and_rejects_invalid_modes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             default_path = Path(directory) / "default.jsonl"
-            with patch.dict(os.environ, {"VERDIKT_AUDIT_SINK": " disabled "}, clear=True):
+            with patch.dict(os.environ, {"JUDIKT_AUDIT_SINK": " disabled "}, clear=True):
                 self.assertIsInstance(build_audit_sink(default_path), NullAuditSink)
             custom_path = Path(directory) / "custom.jsonl"
             with patch.dict(
                 os.environ,
                 {
-                    "VERDIKT_AUDIT_SINK": "jsonl",
-                    "VERDIKT_AUDIT_JSONL_PATH": str(custom_path),
+                    "JUDIKT_AUDIT_SINK": "jsonl",
+                    "JUDIKT_AUDIT_JSONL_PATH": str(custom_path),
                 },
                 clear=True,
             ):
@@ -78,7 +78,7 @@ class SiemAuditSinkTest(unittest.TestCase):
                 sink.write(_event())
             self.assertEqual(json.loads(custom_path.read_text()), _event())
 
-            with patch.dict(os.environ, {"VERDIKT_AUDIT_SINK": "unknown"}, clear=True), self.assertRaisesRegex(
+            with patch.dict(os.environ, {"JUDIKT_AUDIT_SINK": "unknown"}, clear=True), self.assertRaisesRegex(
                 RuntimeError, "unsupported audit sink"
             ):
                 build_audit_sink(default_path)
@@ -86,7 +86,7 @@ class SiemAuditSinkTest(unittest.TestCase):
     def test_s3_builder_requires_bucket(self) -> None:
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ,
-            {"VERDIKT_AUDIT_SINK": "s3", "VERDIKT_AUDIT_S3_BUCKET": ""},
+            {"JUDIKT_AUDIT_SINK": "s3", "JUDIKT_AUDIT_S3_BUCKET": ""},
             clear=True,
         ), self.assertRaisesRegex(RuntimeError, "AUDIT_S3_BUCKET"):
             build_audit_sink(Path(directory) / "audit.jsonl")
@@ -95,16 +95,16 @@ class SiemAuditSinkTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ,
             {
-                "VERDIKT_AUDIT_SINK": "s3",
-                "VERDIKT_AUDIT_S3_BUCKET": "audit-bucket",
-                "VERDIKT_AUDIT_S3_PREFIX": "/security/verdikt/",
+                "JUDIKT_AUDIT_SINK": "s3",
+                "JUDIKT_AUDIT_S3_BUCKET": "audit-bucket",
+                "JUDIKT_AUDIT_S3_PREFIX": "/security/judikt/",
             },
             clear=True,
-        ), patch("verdikt.audit_sink.S3AuditSink") as sink_factory:
+        ), patch("judikt.audit_sink.S3AuditSink") as sink_factory:
             sink = build_audit_sink(Path(directory) / "audit.jsonl")
 
         self.assertIs(sink, sink_factory.return_value)
-        sink_factory.assert_called_once_with("audit-bucket", "/security/verdikt/")
+        sink_factory.assert_called_once_with("audit-bucket", "/security/judikt/")
 
     def test_generic_json_contract_is_authenticated_hashed_and_signed(self) -> None:
         captured: list[object] = []
@@ -119,7 +119,7 @@ class SiemAuditSinkTest(unittest.TestCase):
             hmac_secret="signing-secret",
             timeout_seconds=1.5,
         )
-        with patch("verdikt.audit_sink.urllib.request.urlopen", side_effect=opener):
+        with patch("judikt.audit_sink.urllib.request.urlopen", side_effect=opener):
             sink.write(_event())
 
         request, timeout = captured[0]
@@ -132,10 +132,10 @@ class SiemAuditSinkTest(unittest.TestCase):
         self.assertEqual(timeout, 1.5)
         self.assertEqual(headers["authorization"], "Bearer operator-token")
         self.assertEqual(
-            headers["x-verdikt-event-sha256"], hashlib.sha256(request.data).hexdigest()
+            headers["x-judikt-event-sha256"], hashlib.sha256(request.data).hexdigest()
         )
-        self.assertEqual(headers["x-verdikt-signature-256"], f"sha256={expected_signature}")
-        self.assertEqual(payload["schema_version"], "verdikt.audit.v1")
+        self.assertEqual(headers["x-judikt-signature-256"], f"sha256={expected_signature}")
+        self.assertEqual(payload["schema_version"], "judikt.audit.v1")
         self.assertEqual(payload["event"], _event())
 
     def test_splunk_hec_contract_uses_splunk_auth_and_index_fields(self) -> None:
@@ -146,7 +146,7 @@ class SiemAuditSinkTest(unittest.TestCase):
             protocol="splunk_hec",
         )
         with patch(
-            "verdikt.audit_sink.urllib.request.urlopen",
+            "judikt.audit_sink.urllib.request.urlopen",
             side_effect=lambda request, timeout: captured.append(request) or _Response(),
         ):
             sink.write(_event())
@@ -155,19 +155,19 @@ class SiemAuditSinkTest(unittest.TestCase):
         headers = {key.lower(): value for key, value in request.header_items()}
         payload = json.loads(request.data)
         self.assertEqual(headers["authorization"], "Splunk hec-token")
-        self.assertEqual(payload["sourcetype"], "verdikt:audit:json")
+        self.assertEqual(payload["sourcetype"], "judikt:audit:json")
         self.assertEqual(payload["fields"]["tool"], "platform.health")
         self.assertEqual(payload["fields"]["allowed"], "true")
-        self.assertNotIn("x-verdikt-signature-256", headers)
+        self.assertNotIn("x-judikt-signature-256", headers)
 
     def test_builder_supports_siem_and_secret_source_validation(self) -> None:
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ,
             {
-                "VERDIKT_AUDIT_SINK": "siem",
-                "VERDIKT_SIEM_URL": "https://siem.example.test/events",
-                "VERDIKT_SIEM_TOKEN": "token",
-                "VERDIKT_SIEM_PROTOCOL": "json",
+                "JUDIKT_AUDIT_SINK": "siem",
+                "JUDIKT_SIEM_URL": "https://siem.example.test/events",
+                "JUDIKT_SIEM_TOKEN": "token",
+                "JUDIKT_SIEM_PROTOCOL": "json",
             },
             clear=True,
         ):
@@ -179,19 +179,19 @@ class SiemAuditSinkTest(unittest.TestCase):
             path = Path(directory) / "audit.jsonl"
             with patch.dict(
                 os.environ,
-                {"VERDIKT_AUDIT_SINK": "siem", "VERDIKT_SIEM_TOKEN": "token"},
+                {"JUDIKT_AUDIT_SINK": "siem", "JUDIKT_SIEM_TOKEN": "token"},
                 clear=True,
-            ), self.assertRaisesRegex(RuntimeError, "VERDIKT_SIEM_URL"):
+            ), self.assertRaisesRegex(RuntimeError, "JUDIKT_SIEM_URL"):
                 build_audit_sink(path)
 
             for timeout in ("bad", "0", "-1", "nan", "inf"):
                 with self.subTest(timeout=timeout), patch.dict(
                     os.environ,
                     {
-                        "VERDIKT_AUDIT_SINK": "siem",
-                        "VERDIKT_SIEM_URL": "https://siem.example.test/events",
-                        "VERDIKT_SIEM_TOKEN": "token",
-                        "VERDIKT_SIEM_TIMEOUT_SECONDS": timeout,
+                        "JUDIKT_AUDIT_SINK": "siem",
+                        "JUDIKT_SIEM_URL": "https://siem.example.test/events",
+                        "JUDIKT_SIEM_TOKEN": "token",
+                        "JUDIKT_SIEM_TIMEOUT_SECONDS": timeout,
                     },
                     clear=True,
                 ), self.assertRaisesRegex(RuntimeError, "positive finite"):
@@ -201,14 +201,14 @@ class SiemAuditSinkTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ,
             {
-                "VERDIKT_AUDIT_SINK": "siem",
-                "VERDIKT_SIEM_URL": "https://siem.example.test/events",
-                "VERDIKT_SIEM_TOKEN_SECRET_ARN": "token-secret",
-                "VERDIKT_SIEM_HMAC_SECRET_VAULT_PATH": "secret/data/siem",
+                "JUDIKT_AUDIT_SINK": "siem",
+                "JUDIKT_SIEM_URL": "https://siem.example.test/events",
+                "JUDIKT_SIEM_TOKEN_SECRET_ARN": "token-secret",
+                "JUDIKT_SIEM_HMAC_SECRET_VAULT_PATH": "secret/data/siem",
             },
             clear=True,
         ), patch(
-            "verdikt.audit_sink.resolve_configured_secret",
+            "judikt.audit_sink.resolve_configured_secret",
             side_effect=["brokered-token", "brokered-hmac"],
         ) as broker:
             sink = build_audit_sink(Path(directory) / "audit.jsonl")
@@ -240,7 +240,7 @@ class SiemAuditSinkTest(unittest.TestCase):
                 )
 
         with patch.dict(
-            os.environ, {"VERDIKT_SIEM_ALLOW_INSECURE_HTTP": "true"}, clear=True
+            os.environ, {"JUDIKT_SIEM_ALLOW_INSECURE_HTTP": "true"}, clear=True
         ):
             sink = SiemAuditSink("http://siem.example.test/events/", "token")
         self.assertEqual(sink.endpoint, "http://siem.example.test/events")
@@ -254,12 +254,12 @@ class SiemAuditSinkTest(unittest.TestCase):
         ]
         for failure, message in failures:
             with self.subTest(failure=failure), patch(
-                "verdikt.audit_sink.urllib.request.urlopen", side_effect=failure
+                "judikt.audit_sink.urllib.request.urlopen", side_effect=failure
             ), self.assertRaisesRegex(RuntimeError, message):
                 sink.write(_event())
 
         with patch(
-            "verdikt.audit_sink.urllib.request.urlopen",
+            "judikt.audit_sink.urllib.request.urlopen",
             return_value=_Response(status=500),
         ), self.assertRaisesRegex(RuntimeError, "HTTP 500"):
             sink.write(_event())
@@ -276,11 +276,11 @@ class SiemAuditSinkTest(unittest.TestCase):
                 with self.subTest(strict=strict), patch.dict(
                     os.environ,
                     {
-                        "VERDIKT_AUDIT_HMAC_SECRET": "audit-secret",
-                        "VERDIKT_AUDIT_SINK_STRICT": str(strict).lower(),
+                        "JUDIKT_AUDIT_HMAC_SECRET": "audit-secret",
+                        "JUDIKT_AUDIT_SINK_STRICT": str(strict).lower(),
                     },
                     clear=True,
-                ), patch("verdikt.audit.build_audit_sink", return_value=FailingSink()):
+                ), patch("judikt.audit.build_audit_sink", return_value=FailingSink()):
                     store = AuditStore(Path(directory) / f"audit-{strict}.db")
                     try:
                         if strict:

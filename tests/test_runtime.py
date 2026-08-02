@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from verdikt.cli import PROJECT_ROOT
-from verdikt.runtime import VerdiktRuntime
+from judikt.cli import PROJECT_ROOT
+from judikt.runtime import JudiktRuntime
 
 ROLLBACK_PLAN = "verify health checks and restore previous known-good release if errors increase"
 
@@ -13,7 +13,7 @@ ROLLBACK_PLAN = "verify health checks and restore previous known-good release if
 class RuntimeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.runtime = VerdiktRuntime(
+        self.runtime = JudiktRuntime(
             PROJECT_ROOT / "config" / "policies.yaml",
             Path(self.temp_dir.name) / "audit.db",
         )

@@ -11,8 +11,8 @@ import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
-from verdikt.http_app import DASHBOARD_HTML, MAX_REQUEST_BODY_BYTES, DashboardServer
-from verdikt.runtime import VerdiktRuntime
+from judikt.http_app import DASHBOARD_HTML, MAX_REQUEST_BODY_BYTES, DashboardServer
+from judikt.runtime import JudiktRuntime
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -25,19 +25,19 @@ class DashboardEndToEndTest(unittest.TestCase):
         self.environment = patch.dict(
             os.environ,
             {
-                "VERDIKT_TELEMETRY": "disabled",
-                "VERDIKT_AUDIT_SINK": "none",
-                "VERDIKT_APPROVAL_SECRET": "dashboard-approval-secret",
-                "VERDIKT_AUDIT_HMAC_SECRET": "dashboard-audit-secret",
-                "VERDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
-                "VERDIKT_TOOL_PIN_PATH": str(root / "pins.json"),
-                "VERDIKT_UPSTREAM_CONFIG": "",
+                "JUDIKT_TELEMETRY": "disabled",
+                "JUDIKT_AUDIT_SINK": "none",
+                "JUDIKT_APPROVAL_SECRET": "dashboard-approval-secret",
+                "JUDIKT_AUDIT_HMAC_SECRET": "dashboard-audit-secret",
+                "JUDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
+                "JUDIKT_TOOL_PIN_PATH": str(root / "pins.json"),
+                "JUDIKT_UPSTREAM_CONFIG": "",
                 "GROQ_API_KEY": "",
             },
             clear=True,
         )
         self.environment.start()
-        self.runtime = VerdiktRuntime(PROJECT_ROOT / "config" / "policies.yaml", root / "audit.db")
+        self.runtime = JudiktRuntime(PROJECT_ROOT / "config" / "policies.yaml", root / "audit.db")
         self.server = DashboardServer(
             ("127.0.0.1", 0), self.runtime, api_token="dashboard-token"
         )
@@ -57,7 +57,7 @@ class DashboardEndToEndTest(unittest.TestCase):
         status, body, content_type = self._request("GET", "/")
         self.assertEqual(status, 200)
         self.assertIn("text/html", content_type)
-        self.assertIn("<title>Verdikt</title>", body)
+        self.assertIn("<title>Judikt</title>", body)
 
         status, body, _ = self._request("GET", "/healthz")
         self.assertEqual((status, json.loads(body)), (200, {"status": "ok"}))
@@ -86,7 +86,7 @@ class DashboardEndToEndTest(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertIn("text/plain", content_type)
-        self.assertIn("verdikt_tool_calls_total", metrics)
+        self.assertIn("judikt_tool_calls_total", metrics)
 
         status, body, _ = self._request("GET", "/missing", authenticated=True)
         self.assertEqual(status, 404)

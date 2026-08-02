@@ -1,9 +1,9 @@
 apiVersion: 1
 
 providers:
-  - name: Verdikt
+  - name: Judikt
     orgId: 1
-    folder: Verdikt
+    folder: Judikt
     type: file
     disableDeletion: true
     updateIntervalSeconds: 30

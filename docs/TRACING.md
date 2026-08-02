@@ -1,6 +1,6 @@
 # AWS Tracing And Observability
 
-Verdikt has two tracing stories:
+Judikt has two tracing stories:
 
 1. Local/OpenInference tracing for AI tool-governance spans.
 2. AWS-native tracing for deployed services.
@@ -10,22 +10,22 @@ Verdikt has two tracing stories:
 Enable console spans:
 
 ```bash
-VERDIKT_TELEMETRY=console ./scripts/run_demo.sh
+JUDIKT_TELEMETRY=console ./scripts/run_demo.sh
 ```
 
 Enable OTLP:
 
 ```bash
-export VERDIKT_TELEMETRY=otlp
+export JUDIKT_TELEMETRY=otlp
 export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:6006/v1/traces
 ./scripts/run_real_mcp_http.sh
 ```
 
 Important spans:
 
-- `verdikt.call_tool`
-- `verdikt.real_mcp.call_tool`
-- `verdikt.policy.evaluate`
+- `judikt.call_tool`
+- `judikt.real_mcp.call_tool`
+- `judikt.policy.evaluate`
 - `mcp.<tool_name>`
 - `groq.incident_summary`
 
@@ -61,7 +61,7 @@ Serverless custom metrics:
 Local/EC2 Prometheus-style metrics:
 
 ```bash
-curl -H "Authorization: Bearer $VERDIKT_HTTP_BEARER_TOKEN" http://<host>:8080/metrics
+curl -H "Authorization: Bearer $JUDIKT_HTTP_BEARER_TOKEN" http://<host>:8080/metrics
 ```
 
 ## Interview Framing

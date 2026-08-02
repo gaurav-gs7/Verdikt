@@ -50,18 +50,18 @@ jobs:
         if: inputs.target == 'serverless'
         env:
           AWS_REGION: ${{ inputs.aws_region }}
-          VERDIKT_API_TOKEN: ${{ secrets.VERDIKT_API_TOKEN }}
-          VERDIKT_APPROVAL_SECRET: ${{ secrets.VERDIKT_APPROVAL_SECRET }}
-          VERDIKT_AUDIT_HMAC_SECRET: ${{ secrets.VERDIKT_AUDIT_HMAC_SECRET }}
+          JUDIKT_API_TOKEN: ${{ secrets.JUDIKT_API_TOKEN }}
+          JUDIKT_APPROVAL_SECRET: ${{ secrets.JUDIKT_APPROVAL_SECRET }}
+          JUDIKT_AUDIT_HMAC_SECRET: ${{ secrets.JUDIKT_AUDIT_HMAC_SECRET }}
         run: ./scripts/aws/deploy_serverless.sh
 
       - name: Deploy EC2 real MCP server
         if: inputs.target == 'ec2-real-mcp'
         env:
           AWS_REGION: ${{ inputs.aws_region }}
-          VERDIKT_ALLOWED_CIDR: ${{ inputs.allowed_cidr }}
-          VERDIKT_MODE: real-mcp
-          VERDIKT_HTTP_BEARER_TOKEN: ${{ secrets.VERDIKT_HTTP_BEARER_TOKEN }}
-          VERDIKT_APPROVAL_SECRET: ${{ secrets.VERDIKT_APPROVAL_SECRET }}
-          VERDIKT_AUDIT_HMAC_SECRET: ${{ secrets.VERDIKT_AUDIT_HMAC_SECRET }}
+          JUDIKT_ALLOWED_CIDR: ${{ inputs.allowed_cidr }}
+          JUDIKT_MODE: real-mcp
+          JUDIKT_HTTP_BEARER_TOKEN: ${{ secrets.JUDIKT_HTTP_BEARER_TOKEN }}
+          JUDIKT_APPROVAL_SECRET: ${{ secrets.JUDIKT_APPROVAL_SECRET }}
+          JUDIKT_AUDIT_HMAC_SECRET: ${{ secrets.JUDIKT_AUDIT_HMAC_SECRET }}
         run: ./scripts/aws/deploy_terraform.sh

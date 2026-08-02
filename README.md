@@ -1,18 +1,18 @@
-# Verdikt
+# Judikt
 
-Verdikt is a deterministic security and reliability control plane for Model Context Protocol (MCP) tool execution. It governs the request before an external tool runs, inspects the untrusted result before it reaches an agent, and produces tamper-evident operational evidence for both decisions.
+Judikt is a deterministic security and reliability control plane for Model Context Protocol (MCP) tool execution. It governs the request before an external tool runs, inspects the untrusted result before it reaches an agent, and produces tamper-evident operational evidence for both decisions.
 
 The core demo runs on an 8 GB laptop with Python only, no local model, and no API key. Optional profiles add the official MCP SDK, Redis, OpenTelemetry/OpenInference, Docker observability, AWS deployment, and a Groq incident summary. No LLM participates in an allow or deny decision.
 
 ## Demo Recording
 
-![Verdikt end-to-end demo showing real commands, MCP subprocess backends, policy verdict branches, response inspection, and signed operational evidence](docs/assets/verdikt-demo.gif)
+![Judikt end-to-end demo showing real commands, MCP subprocess backends, policy verdict branches, response inspection, and signed operational evidence](docs/assets/judikt-demo.gif)
 
 ## Why This Project
 
 An MCP server can expose operationally powerful tools to an AI agent. The interesting production question is not whether the agent can call a tool. It is whether the platform can constrain, observe, disable, and explain those calls under pressure.
 
-Verdikt demonstrates:
+Judikt demonstrates:
 
 - MCP gateway proxying over JSON-RPC stdio
 - Official MCP SDK Streamable HTTP server for production-facing clients
@@ -75,7 +75,7 @@ flowchart LR
 The upstream tool servers are separate subprocesses:
 
 - `platform-ops`: production service health, sanitized config, logs, allowlisted diagnostics, rolling restart, and deployment rollback.
-- `kubernetes`: pod status, guarded pod restart, and rollout status. It uses a safe simulator by default and can be pointed at `kubectl` with `VERDIKT_KUBERNETES_MODE=kubectl` for a controlled lab.
+- `kubernetes`: pod status, guarded pod restart, and rollout status. It uses a safe simulator by default and can be pointed at `kubectl` with `JUDIKT_KUBERNETES_MODE=kubectl` for a controlled lab.
 - `incident`: create incidents, attach correlated evidence, and read timelines.
 
 ## Quick Start
@@ -87,7 +87,7 @@ The launch scripts automatically use `.venv/bin/python` when a project virtual e
 To use an isolated audit database for a run:
 
 ```bash
-./scripts/run_demo.sh --audit-db /tmp/verdikt-demo.db
+./scripts/run_demo.sh --audit-db /tmp/judikt-demo.db
 ```
 
 ```bash
@@ -110,7 +110,7 @@ make observability-up
 make helm-template
 ```
 
-`make test` is the canonical release gate for all Tier 1, Tier 2, and Tier 3 work. It provisions isolated Redis and Vault containers, runs the complete unit/integration/end-to-end suite once, enforces aggregate and security-critical branch coverage, executes adversarial and failure drills, measures guarded-call performance, and verifies the pinned official Filesystem and Memory MCP servers. Existing Redis and Vault endpoints can be supplied through `VERDIKT_TEST_REDIS_URL`, `VERDIKT_TEST_VAULT_ADDR`, and `VERDIKT_TEST_VAULT_TOKEN`.
+`make test` is the canonical release gate for all Tier 1, Tier 2, and Tier 3 work. It provisions isolated Redis and Vault containers, runs the complete unit/integration/end-to-end suite once, enforces aggregate and security-critical branch coverage, executes adversarial and failure drills, measures guarded-call performance, and verifies the pinned official Filesystem and Memory MCP servers. Existing Redis and Vault endpoints can be supplied through `JUDIKT_TEST_REDIS_URL`, `JUDIKT_TEST_VAULT_ADDR`, and `JUDIKT_TEST_VAULT_TOKEN`.
 
 Start the dashboard:
 
@@ -121,10 +121,10 @@ Start the dashboard:
 Then open [http://127.0.0.1:8080](http://127.0.0.1:8080). The page includes buttons for allowed calls, blocked calls, an approved rollback drill, secret redaction, and kill-switch testing.
 
 Loopback is the only unauthenticated mode. Binding to any other interface fails
-closed unless `VERDIKT_API_TOKEN` is set. The browser asks for the token once
+closed unless `JUDIKT_API_TOKEN` is set. The browser asks for the token once
 and keeps it in session storage.
 
-To expose Verdikt itself as a stdio MCP server:
+To expose Judikt itself as a stdio MCP server:
 
 ```bash
 ./scripts/run_mcp_gateway.sh
@@ -135,8 +135,8 @@ For an MCP client configuration, use:
 ```json
 {
   "mcpServers": {
-    "verdikt": {
-      "command": "/absolute/path/to/Verdikt/scripts/run_mcp_gateway.sh"
+    "judikt": {
+      "command": "/absolute/path/to/Judikt/scripts/run_mcp_gateway.sh"
     }
   }
 }
@@ -144,7 +144,7 @@ For an MCP client configuration, use:
 
 ### External MCP Servers
 
-Set `VERDIKT_UPSTREAM_CONFIG` to a JSON file using the shape in [`config/upstreams.example.json`](config/upstreams.example.json). Commands are executed directly without a shell. Sensitive upstream credentials should use `from_env` or `from_aws_secret`; caller-supplied OAuth tokens are denied recursively by policy.
+Set `JUDIKT_UPSTREAM_CONFIG` to a JSON file using the shape in [`config/upstreams.example.json`](config/upstreams.example.json). Commands are executed directly without a shell. Sensitive upstream credentials should use `from_env` or `from_aws_secret`; caller-supplied OAuth tokens are denied recursively by policy.
 
 The test suite launches [`tests/fixtures/external_mcp_server.py`](tests/fixtures/external_mcp_server.py) as an independent process and proves normal and text-only responses, paginated discovery, server-initiated requests, environment isolation, injected-result quarantine, and changed metadata blocking. The versioned [community interoperability harness](docs/COMMUNITY_INTEROP.md) separately targets the official MCP Filesystem and Memory servers plus GitHub's official read-only server.
 
@@ -187,7 +187,7 @@ curl -s http://127.0.0.1:8080/api/call \
 Issue a signed approval token for a rollback:
 
 ```bash
-TOKEN=$(./scripts/python.sh -m verdikt.cli issue-approval \
+TOKEN=$(./scripts/python.sh -m judikt.cli issue-approval \
   --actor gaurav \
   --reason "rollback after elevated 5xx rate" \
   --server platform-ops \
@@ -232,11 +232,11 @@ Build and run the production-facing real MCP container:
 ```bash
 make docker-build
 docker run --rm -p 8080:8080 \
-  -e VERDIKT_HTTP_BEARER_TOKEN="local-dev-token" \
-  verdikt:local
+  -e JUDIKT_HTTP_BEARER_TOKEN="local-dev-token" \
+  judikt:local
 ```
 
-The container binds to `0.0.0.0`, so startup fails closed unless bearer/JWT auth is configured or `VERDIKT_ALLOW_UNAUTHENTICATED_REMOTE=true` is explicitly set for an isolated lab.
+The container binds to `0.0.0.0`, so startup fails closed unless bearer/JWT auth is configured or `JUDIKT_ALLOW_UNAUTHENTICATED_REMOTE=true` is explicitly set for an isolated lab.
 
 The container defaults to the official MCP Streamable HTTP server:
 
@@ -251,31 +251,31 @@ Use a bearer token for remote demos:
 
 ```bash
 docker run --rm -p 8080:8080 \
-  -e VERDIKT_HTTP_BEARER_TOKEN="$(openssl rand -hex 24)" \
-  verdikt:local
+  -e JUDIKT_HTTP_BEARER_TOKEN="$(openssl rand -hex 24)" \
+  judikt:local
 ```
 
 To run the dashboard container instead:
 
 ```bash
 docker run --rm -p 8080:8080 \
-  -e VERDIKT_MODE=dashboard \
-  -e VERDIKT_API_TOKEN="$(openssl rand -hex 24)" \
-  verdikt:local
+  -e JUDIKT_MODE=dashboard \
+  -e JUDIKT_API_TOKEN="$(openssl rand -hex 24)" \
+  judikt:local
 ```
 
-Dashboard API clients must send `Authorization: Bearer $VERDIKT_API_TOKEN`.
+Dashboard API clients must send `Authorization: Bearer $JUDIKT_API_TOKEN`.
 The health endpoint and dashboard page remain unauthenticated; dashboard APIs
 and `/metrics` are protected.
 
 ## Real MCP Server
 
-Verdikt now includes an official MCP SDK server using Streamable HTTP. It exposes production-operations tools through the same policy, risk, approval, redaction, audit, metrics, kill-switch, rate-limit, and circuit-breaker controls used by the rest of the project.
+Judikt now includes an official MCP SDK server using Streamable HTTP. It exposes production-operations tools through the same policy, risk, approval, redaction, audit, metrics, kill-switch, rate-limit, and circuit-breaker controls used by the rest of the project.
 
 Run locally:
 
 ```bash
-export VERDIKT_HTTP_BEARER_TOKEN="local-dev-token"
+export JUDIKT_HTTP_BEARER_TOKEN="local-dev-token"
 ./scripts/run_real_mcp_http.sh --host 127.0.0.1 --port 8080
 ```
 
@@ -299,13 +299,13 @@ Production-style tools exposed by the MCP server:
 - `incident.create`
 - `incident.attach_evidence`
 - `incident.timeline`
-- `verdikt.issue_approval`
-- `verdikt.request_approval`
-- `verdikt.approval_status`
-- `verdikt.call_upstream`
-- `verdikt.set_tool_enabled`
-- `verdikt.set_server_enabled`
-- `verdikt.runtime_state`
+- `judikt.issue_approval`
+- `judikt.request_approval`
+- `judikt.approval_status`
+- `judikt.call_upstream`
+- `judikt.set_tool_enabled`
+- `judikt.set_server_enabled`
+- `judikt.runtime_state`
 
 ## AWS Free-Tier Deployment
 
@@ -319,9 +319,9 @@ Recommended serverless command shape:
 
 ```bash
 export AWS_REGION=us-east-1
-export VERDIKT_API_TOKEN="$(openssl rand -hex 24)"
-export VERDIKT_APPROVAL_SECRET="$(openssl rand -hex 32)"
-export VERDIKT_AUDIT_HMAC_SECRET="$(openssl rand -hex 32)"
+export JUDIKT_API_TOKEN="$(openssl rand -hex 24)"
+export JUDIKT_APPROVAL_SECRET="$(openssl rand -hex 32)"
+export JUDIKT_AUDIT_HMAC_SECRET="$(openssl rand -hex 32)"
 ./scripts/aws/deploy_serverless.sh
 ```
 
@@ -335,10 +335,10 @@ EC2 Terraform command shape:
 
 ```bash
 export AWS_REGION=us-east-1
-export VERDIKT_ALLOWED_CIDR="$(curl -s https://checkip.amazonaws.com)/32"
-export VERDIKT_HTTP_BEARER_TOKEN="$(openssl rand -hex 24)"
-export VERDIKT_APPROVAL_SECRET="$(openssl rand -hex 32)"
-export VERDIKT_AUDIT_HMAC_SECRET="$(openssl rand -hex 32)"
+export JUDIKT_ALLOWED_CIDR="$(curl -s https://checkip.amazonaws.com)/32"
+export JUDIKT_HTTP_BEARER_TOKEN="$(openssl rand -hex 24)"
+export JUDIKT_APPROVAL_SECRET="$(openssl rand -hex 32)"
+export JUDIKT_AUDIT_HMAC_SECRET="$(openssl rand -hex 32)"
 ./scripts/aws/deploy_terraform.sh
 ```
 
@@ -373,13 +373,13 @@ python3 -m pip install -e '.[observability]'
 Print OpenInference-compatible spans to the terminal:
 
 ```bash
-VERDIKT_TELEMETRY=console ./scripts/run_demo.sh
+JUDIKT_TELEMETRY=console ./scripts/run_demo.sh
 ```
 
 Export spans over OTLP HTTP to a local Phoenix instance or another OTLP-compatible backend:
 
 ```bash
-export VERDIKT_TELEMETRY=otlp
+export JUDIKT_TELEMETRY=otlp
 export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:6006/v1/traces
 ./scripts/run_dashboard.sh
 ```
@@ -387,13 +387,13 @@ export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:6006/v1/traces
 The trace hierarchy is intentionally security-aware:
 
 ```text
-verdikt.call_tool                 CHAIN
-  verdikt.policy.evaluate         GUARDRAIL
+judikt.call_tool                 CHAIN
+  judikt.policy.evaluate         GUARDRAIL
   mcp.platform.health               TOOL       # only created for forwarded calls
 groq.incident_summary               LLM        # only created when Groq is called
 ```
 
-Arguments and outputs are redacted before they are attached to spans. The remote server uses the official MCP Python SDK, while Verdikt emits explicit policy, tool, and LLM spans so security decisions have stable attributes independent of auto-instrumentation. External stdio upstreams remain separate processes and do not yet propagate trace context across that process boundary.
+Arguments and outputs are redacted before they are attached to spans. The remote server uses the official MCP Python SDK, while Judikt emits explicit policy, tool, and LLM spans so security decisions have stable attributes independent of auto-instrumentation. External stdio upstreams remain separate processes and do not yet propagate trace context across that process boundary.
 
 ## Threat Model
 
@@ -411,7 +411,7 @@ Implemented and tested controls directly address:
 - Fast containment of a compromised tool or MCP server.
 - Audit-record mutation and loss of local-only evidence through optional central shipping.
 
-Explicit gaps remain: Verdikt is an OAuth resource server, not an authorization server; PKCE and per-client consent belong in the chosen IdP/client flow. It does not yet provide multi-tenant isolation, semantic DLP for privacy inference, complete Host-header and deployment-edge DNS-rebinding defenses beyond Origin validation, cryptographically signed policy bundles, OS-level upstream sandboxes, or complete MCP resource/prompt proxying. The coverage matrix treats these as partial or not covered rather than presenting the project as universally production complete.
+Explicit gaps remain: Judikt is an OAuth resource server, not an authorization server; PKCE and per-client consent belong in the chosen IdP/client flow. It does not yet provide multi-tenant isolation, semantic DLP for privacy inference, complete Host-header and deployment-edge DNS-rebinding defenses beyond Origin validation, cryptographically signed policy bundles, OS-level upstream sandboxes, or complete MCP resource/prompt proxying. The coverage matrix treats these as partial or not covered rather than presenting the project as universally production complete.
 
 ## Design Notes
 

@@ -15,11 +15,11 @@ from pathlib import Path
 from typing import Iterator
 from unittest.mock import patch
 
-from verdikt.approval import ApprovalAuthority
-from verdikt.audit import AuditStore
-from verdikt.ops_runtime import VerdiktOpsRuntime
-from verdikt.secrets import read_vault_secret
-from verdikt.slack_approval import SlackApprovalWorkflow
+from judikt.approval import ApprovalAuthority
+from judikt.audit import AuditStore
+from judikt.ops_runtime import JudiktOpsRuntime
+from judikt.secrets import read_vault_secret
+from judikt.slack_approval import SlackApprovalWorkflow
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -71,17 +71,17 @@ class Tier3HTTPIntegrationTest(unittest.TestCase):
         with _http_server(VaultHandler) as address, patch.dict(
             os.environ,
             {
-                "VERDIKT_VAULT_ADDR": address,
-                "VERDIKT_VAULT_TOKEN": "vault-client-token",
-                "VERDIKT_VAULT_NAMESPACE": "platform-team",
-                "VERDIKT_SECRET_TIMEOUT_SECONDS": "1",
+                "JUDIKT_VAULT_ADDR": address,
+                "JUDIKT_VAULT_TOKEN": "vault-client-token",
+                "JUDIKT_VAULT_NAMESPACE": "platform-team",
+                "JUDIKT_SECRET_TIMEOUT_SECONDS": "1",
             },
             clear=True,
         ):
-            value = read_vault_secret("secret/data/verdikt/service", "api_token")
+            value = read_vault_secret("secret/data/judikt/service", "api_token")
 
         self.assertEqual(value, "real-http-vault-secret")
-        self.assertEqual(observed[0]["path"], "/v1/secret/data/verdikt/service")
+        self.assertEqual(observed[0]["path"], "/v1/secret/data/judikt/service")
         self.assertEqual(observed[0]["token"], "vault-client-token")
         self.assertEqual(observed[0]["namespace"], "platform-team")
         self.assertEqual(observed[0]["accept"], "application/json")
@@ -97,8 +97,8 @@ class Tier3HTTPIntegrationTest(unittest.TestCase):
                     {
                         "path": self.path,
                         "authorization": self.headers.get("Authorization"),
-                        "event_hash": self.headers.get("X-Verdikt-Event-SHA256"),
-                        "signature": self.headers.get("X-Verdikt-Signature-256"),
+                        "event_hash": self.headers.get("X-Judikt-Event-SHA256"),
+                        "signature": self.headers.get("X-Judikt-Signature-256"),
                         "body": body,
                     }
                 )
@@ -110,18 +110,18 @@ class Tier3HTTPIntegrationTest(unittest.TestCase):
         ) as address, patch.dict(
             os.environ,
             {
-                "VERDIKT_AUDIT_HMAC_SECRET": "audit-chain-secret",
-                "VERDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
-                "VERDIKT_AUDIT_SINK": "siem",
-                "VERDIKT_AUDIT_SINK_STRICT": "true",
-                "VERDIKT_SIEM_URL": f"{address}/events",
-                "VERDIKT_SIEM_TOKEN": "siem-token",
-                "VERDIKT_SIEM_HMAC_SECRET": "siem-body-secret",
-                "VERDIKT_SIEM_TIMEOUT_SECONDS": "1",
+                "JUDIKT_AUDIT_HMAC_SECRET": "audit-chain-secret",
+                "JUDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
+                "JUDIKT_AUDIT_SINK": "siem",
+                "JUDIKT_AUDIT_SINK_STRICT": "true",
+                "JUDIKT_SIEM_URL": f"{address}/events",
+                "JUDIKT_SIEM_TOKEN": "siem-token",
+                "JUDIKT_SIEM_HMAC_SECRET": "siem-body-secret",
+                "JUDIKT_SIEM_TIMEOUT_SECONDS": "1",
             },
             clear=True,
         ):
-            runtime = VerdiktOpsRuntime(POLICY, Path(directory) / "audit.db")
+            runtime = JudiktOpsRuntime(POLICY, Path(directory) / "audit.db")
             try:
                 result = runtime.call_tool(
                     "platform-ops",
@@ -169,11 +169,11 @@ class Tier3HTTPIntegrationTest(unittest.TestCase):
         ) as address, patch.dict(
             os.environ,
             {
-                "VERDIKT_AUDIT_HMAC_SECRET": "audit-chain-secret",
-                "VERDIKT_AUDIT_SINK": "siem",
-                "VERDIKT_AUDIT_SINK_STRICT": "true",
-                "VERDIKT_SIEM_URL": f"{address}/events",
-                "VERDIKT_SIEM_TOKEN": "siem-token",
+                "JUDIKT_AUDIT_HMAC_SECRET": "audit-chain-secret",
+                "JUDIKT_AUDIT_SINK": "siem",
+                "JUDIKT_AUDIT_SINK_STRICT": "true",
+                "JUDIKT_SIEM_URL": f"{address}/events",
+                "JUDIKT_SIEM_TOKEN": "siem-token",
             },
             clear=True,
         ):
@@ -232,10 +232,10 @@ class Tier3HTTPIntegrationTest(unittest.TestCase):
         ) as address, patch.dict(
             os.environ,
             {
-                "VERDIKT_SLACK_WEBHOOK_URL": f"{address}/slack-webhook",
-                "VERDIKT_SLACK_SIGNING_SECRET": "slack-signing-secret",
-                "VERDIKT_SLACK_APPROVER_IDS": "U-ONCALL",
-                "VERDIKT_SLACK_TIMEOUT_SECONDS": "1",
+                "JUDIKT_SLACK_WEBHOOK_URL": f"{address}/slack-webhook",
+                "JUDIKT_SLACK_SIGNING_SECRET": "slack-signing-secret",
+                "JUDIKT_SLACK_APPROVER_IDS": "U-ONCALL",
+                "JUDIKT_SLACK_TIMEOUT_SECONDS": "1",
             },
             clear=True,
         ):

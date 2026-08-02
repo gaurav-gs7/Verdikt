@@ -1,6 +1,6 @@
 # AWS Free-Tier Deployment
 
-This runbook deploys Verdikt to AWS using two infrastructure-as-code paths. The highest-signal AIOps path is serverless: API Gateway, Lambda, DynamoDB, EventBridge, SQS, CloudWatch, and Terraform. The real MCP path uses EC2, ECR, IAM, security groups, SSM Session Manager, Docker, the official MCP Python SDK, and Terraform. CloudFormation remains available as the AWS-native fallback.
+This runbook deploys Judikt to AWS using two infrastructure-as-code paths. The highest-signal AIOps path is serverless: API Gateway, Lambda, DynamoDB, EventBridge, SQS, CloudWatch, and Terraform. The real MCP path uses EC2, ECR, IAM, security groups, SSM Session Manager, Docker, the official MCP Python SDK, and Terraform. CloudFormation remains available as the AWS-native fallback.
 
 ## Cost Guardrails
 
@@ -12,7 +12,7 @@ Recommended guardrails:
 - Use a Free Tier eligible EC2 type for your account, usually `t3.micro` for this guide.
 - Delete the stack when you are done.
 - Keep ECR images small and prune old tags.
-- Set `VERDIKT_ALLOWED_CIDR` to your public IP `/32`; the templates otherwise fail closed to loopback-only access.
+- Set `JUDIKT_ALLOWED_CIDR` to your public IP `/32`; the templates otherwise fail closed to loopback-only access.
 - Create a billing budget and alert in the AWS Billing console before experimenting.
 
 ## Architecture
@@ -30,7 +30,7 @@ flowchart LR
     Dev --> CFN["CloudFormation fallback"]
     CFN --> EC2["EC2 t3.micro"]
     EC2 --> ECR
-    EC2 --> App["Verdikt container"]
+    EC2 --> App["Judikt container"]
     User["Browser"] --> SG["Security Group :8080"]
     SG --> App
     Operator["AWS SSM Session Manager"] --> EC2
@@ -69,7 +69,7 @@ Confirm your identity:
 aws sts get-caller-identity
 ```
 
-If the ARN ends with `:root`, create an IAM user/role or use IAM Identity Center before deploying. The scripts intentionally block root-user deployment unless you set `VERDIKT_ALLOW_ROOT_AWS=true` for a one-off lab.
+If the ARN ends with `:root`, create an IAM user/role or use IAM Identity Center before deploying. The scripts intentionally block root-user deployment unless you set `JUDIKT_ALLOW_ROOT_AWS=true` for a one-off lab.
 
 ## Recommended Path: Serverless Terraform
 
@@ -77,9 +77,9 @@ The serverless module lives in [../infra/aws/serverless](../infra/aws/serverless
 
 ```bash
 export AWS_REGION=us-east-1
-export VERDIKT_API_TOKEN="$(openssl rand -hex 24)"
-export VERDIKT_APPROVAL_SECRET="$(openssl rand -hex 32)"
-export VERDIKT_AUDIT_HMAC_SECRET="$(openssl rand -hex 32)"
+export JUDIKT_API_TOKEN="$(openssl rand -hex 24)"
+export JUDIKT_APPROVAL_SECRET="$(openssl rand -hex 32)"
+export JUDIKT_AUDIT_HMAC_SECRET="$(openssl rand -hex 32)"
 ./scripts/aws/deploy_serverless.sh
 ```
 
@@ -95,7 +95,7 @@ Destroy it after demos:
 
 ## Real MCP Path: EC2 Terraform
 
-The Terraform module lives in [../infra/aws/terraform](../infra/aws/terraform). It manages ECR, IAM, security groups, SSM access, and the EC2 host. The Docker container defaults to `VERDIKT_MODE=real-mcp`, which runs the official MCP Streamable HTTP server at `/mcp`.
+The Terraform module lives in [../infra/aws/terraform](../infra/aws/terraform). It manages ECR, IAM, security groups, SSM access, and the EC2 host. The Docker container defaults to `JUDIKT_MODE=real-mcp`, which runs the official MCP Streamable HTTP server at `/mcp`.
 
 ## 1. Deploy With Terraform
 
@@ -103,12 +103,12 @@ For an x86 EC2 instance such as `t3.micro`:
 
 ```bash
 export AWS_REGION=us-east-1
-export VERDIKT_DOCKER_PLATFORM=linux/amd64
-export VERDIKT_MODE=real-mcp
-export VERDIKT_HTTP_BEARER_TOKEN="$(openssl rand -hex 24)"
-export VERDIKT_APPROVAL_SECRET="$(openssl rand -hex 32)"
-export VERDIKT_AUDIT_HMAC_SECRET="$(openssl rand -hex 32)"
-export VERDIKT_ALLOWED_CIDR="$(curl -s https://checkip.amazonaws.com)/32"
+export JUDIKT_DOCKER_PLATFORM=linux/amd64
+export JUDIKT_MODE=real-mcp
+export JUDIKT_HTTP_BEARER_TOKEN="$(openssl rand -hex 24)"
+export JUDIKT_APPROVAL_SECRET="$(openssl rand -hex 32)"
+export JUDIKT_AUDIT_HMAC_SECRET="$(openssl rand -hex 32)"
+export JUDIKT_ALLOWED_CIDR="$(curl -s https://checkip.amazonaws.com)/32"
 ./scripts/aws/deploy_terraform.sh
 ```
 
@@ -123,9 +123,9 @@ The script does three things:
 For an ARM instance such as `t4g.micro`, use:
 
 ```bash
-export VERDIKT_INSTANCE_TYPE=t4g.micro
-export VERDIKT_DOCKER_PLATFORM=linux/arm64
-export VERDIKT_AMI_SSM_PARAMETER=/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+export JUDIKT_INSTANCE_TYPE=t4g.micro
+export JUDIKT_DOCKER_PLATFORM=linux/arm64
+export JUDIKT_AMI_SSM_PARAMETER=/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
 ```
 
 The same variable is shown in [../infra/aws/terraform/terraform.tfvars.example](../infra/aws/terraform/terraform.tfvars.example) for manual Terraform runs.
@@ -137,7 +137,7 @@ Terraform prints `mcp_endpoint_url` and `dashboard_url`. In `real-mcp` mode, use
 ```bash
 URL="http://<public-dns>:8080"
 curl -s "$URL/healthz"
-curl -s "$URL/metrics" -H "Authorization: Bearer $VERDIKT_HTTP_BEARER_TOKEN"
+curl -s "$URL/metrics" -H "Authorization: Bearer $JUDIKT_HTTP_BEARER_TOKEN"
 ```
 
 Use an MCP client pointed at:
@@ -158,7 +158,7 @@ Inside the instance:
 
 ```bash
 sudo docker ps
-sudo docker logs verdikt --tail 100
+sudo docker logs judikt --tail 100
 curl -s http://127.0.0.1:8080/healthz
 ```
 
@@ -180,7 +180,7 @@ For an x86 EC2 instance such as `t3.micro`:
 
 ```bash
 export AWS_REGION=us-east-1
-export VERDIKT_DOCKER_PLATFORM=linux/amd64
+export JUDIKT_DOCKER_PLATFORM=linux/amd64
 IMAGE_URI=$(./scripts/aws/build_push_ecr.sh)
 echo "$IMAGE_URI"
 ```
@@ -188,7 +188,7 @@ echo "$IMAGE_URI"
 For an ARM instance such as `t4g.micro`, use:
 
 ```bash
-export VERDIKT_DOCKER_PLATFORM=linux/arm64
+export JUDIKT_DOCKER_PLATFORM=linux/arm64
 ```
 
 If you choose ARM, also pass an ARM Amazon Linux 2023 AMI parameter in CloudFormation or edit `LatestAmiId`.
@@ -198,7 +198,7 @@ If you choose ARM, also pass an ARM Amazon Linux 2023 AMI parameter in CloudForm
 Restrict the app to your IP:
 
 ```bash
-export VERDIKT_ALLOWED_CIDR="$(curl -s https://checkip.amazonaws.com)/32"
+export JUDIKT_ALLOWED_CIDR="$(curl -s https://checkip.amazonaws.com)/32"
 ```
 
 Deploy:
@@ -244,7 +244,7 @@ Inside the instance:
 
 ```bash
 sudo docker ps
-sudo docker logs verdikt --tail 100
+sudo docker logs judikt --tail 100
 curl -s http://127.0.0.1:8080/healthz
 ```
 
@@ -254,7 +254,7 @@ curl -s http://127.0.0.1:8080/healthz
 ./scripts/aws/delete_stack.sh
 aws cloudformation wait stack-delete-complete \
   --region "${AWS_REGION:-us-east-1}" \
-  --stack-name "${VERDIKT_STACK_NAME:-verdikt-free-tier}"
+  --stack-name "${JUDIKT_STACK_NAME:-judikt-free-tier}"
 ```
 
 Optional ECR cleanup:
@@ -262,8 +262,8 @@ Optional ECR cleanup:
 ```bash
 aws ecr batch-delete-image \
   --region "${AWS_REGION:-us-east-1}" \
-  --repository-name "${VERDIKT_ECR_REPOSITORY:-verdikt}" \
-  --image-ids imageTag="${VERDIKT_IMAGE_TAG:-latest}"
+  --repository-name "${JUDIKT_ECR_REPOSITORY:-judikt}" \
+  --image-ids imageTag="${JUDIKT_IMAGE_TAG:-latest}"
 ```
 
 ## Resume Framing

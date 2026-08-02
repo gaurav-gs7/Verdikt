@@ -8,9 +8,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from verdikt.audit_sink import S3AuditSink
-from verdikt.secrets import SecretBrokerError, read_aws_secret
-from verdikt.upstreams import load_upstream_servers
+from judikt.audit_sink import S3AuditSink
+from judikt.secrets import SecretBrokerError, read_aws_secret
+from judikt.upstreams import load_upstream_servers
 
 
 class FakeAWSClient:
@@ -41,10 +41,10 @@ class AWSIntegrationTest(unittest.TestCase):
             stubber.add_response(
                 "get_secret_value",
                 {"SecretString": '{"token":"stubber-secret"}'},
-                {"SecretId": "verdikt/test"},
+                {"SecretId": "judikt/test"},
             )
             self.assertEqual(
-                read_aws_secret("verdikt/test", "token", client=client),
+                read_aws_secret("judikt/test", "token", client=client),
                 "stubber-secret",
             )
 
@@ -53,10 +53,10 @@ class AWSIntegrationTest(unittest.TestCase):
                 "get_secret_value",
                 service_error_code="ResourceNotFoundException",
                 service_message="private AWS service detail",
-                expected_params={"SecretId": "verdikt/missing"},
+                expected_params={"SecretId": "judikt/missing"},
             )
             with self.assertRaisesRegex(SecretBrokerError, "could not be retrieved") as raised:
-                read_aws_secret("verdikt/missing", client=client)
+                read_aws_secret("judikt/missing", client=client)
             self.assertNotIn("private AWS service detail", str(raised.exception))
 
     def test_resolves_upstream_credential_from_secrets_manager(self) -> None:
@@ -72,7 +72,7 @@ class AWSIntegrationTest(unittest.TestCase):
                                 "command": ["github-mcp-server"],
                                 "env": {
                                     "GITHUB_TOKEN": {
-                                        "from_aws_secret": "verdikt/upstreams/github",
+                                        "from_aws_secret": "judikt/upstreams/github",
                                         "json_key": "token",
                                     }
                                 },
@@ -86,7 +86,7 @@ class AWSIntegrationTest(unittest.TestCase):
                 servers = load_upstream_servers(path)
 
         self.assertEqual(servers[0].environment["GITHUB_TOKEN"], "operator-managed-token")
-        self.assertEqual(client.calls, [{"SecretId": "verdikt/upstreams/github"}])
+        self.assertEqual(client.calls, [{"SecretId": "judikt/upstreams/github"}])
 
     def test_s3_sink_uploads_encrypted_redacted_envelope(self) -> None:
         client = FakeAWSClient()
@@ -98,12 +98,12 @@ class AWSIntegrationTest(unittest.TestCase):
         }
 
         with patch.dict(sys.modules, {"boto3": boto3}):
-            sink = S3AuditSink("audit-bucket", "verdikt/audit")
+            sink = S3AuditSink("audit-bucket", "judikt/audit")
             sink.write(event)
 
         request = client.calls[0]
         self.assertEqual(request["Bucket"], "audit-bucket")
-        self.assertTrue(str(request["Key"]).startswith("verdikt/audit/date=2026-07-20/"))
+        self.assertTrue(str(request["Key"]).startswith("judikt/audit/date=2026-07-20/"))
         self.assertEqual(request["ContentType"], "application/json")
         self.assertEqual(request["ServerSideEncryption"], "AES256")
         self.assertEqual(json.loads(request["Body"]), event)

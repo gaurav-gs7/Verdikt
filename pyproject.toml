@@ -3,8 +3,8 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "verdikt"
-version = "0.2.0"
+name = "judikt"
+version = "0.3.0"
 description = "A deterministic security and reliability control plane for MCP tool execution."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,10 +12,10 @@ authors = [{ name = "Gaurav GS" }]
 license = { text = "Apache-2.0" }
 
 [project.scripts]
-verdikt = "verdikt.cli:main"
-# Compatibility aliases retained for pre-Verdikt local configurations.
-gatetrace-mcp = "verdikt.cli:main"
-mcp-guard = "verdikt.cli:main"
+judikt = "judikt.cli:main"
+# Compatibility aliases retained for pre-Judikt local configurations.
+gatetrace-mcp = "judikt.cli:main"
+mcp-guard = "judikt.cli:main"
 
 [project.optional-dependencies]
 mcp = [
@@ -49,6 +49,9 @@ test = [
 quality = [
   "pip-audit>=2.10,<3",
   "ruff>=0.12,<1",
+]
+media = [
+  "Pillow>=11,<13",
 ]
 
 [tool.setuptools]

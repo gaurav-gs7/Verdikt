@@ -2,8 +2,8 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
-  - job_name: verdikt
+  - job_name: judikt
     metrics_path: /metrics
     bearer_token: local-dev-token
     static_configs:
-      - targets: ["verdikt:8080"]
+      - targets: ["judikt:8080"]

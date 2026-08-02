@@ -16,7 +16,7 @@ class GatewayProtocolTest(unittest.TestCase):
             [
                 sys.executable,
                 "-m",
-                "verdikt.cli",
+                "judikt.cli",
                 "--audit-db",
                 str(Path(self.temp_dir.name) / "audit.db"),
                 "serve-mcp",

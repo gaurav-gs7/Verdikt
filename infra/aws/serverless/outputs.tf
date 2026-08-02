@@ -39,7 +39,7 @@ output "findings_queue_url" {
 }
 
 output "cloudwatch_dashboard_name" {
-  description = "CloudWatch dashboard for Verdikt serverless operations."
+  description = "CloudWatch dashboard for Judikt serverless operations."
   value       = aws_cloudwatch_dashboard.ops.dashboard_name
 }
 

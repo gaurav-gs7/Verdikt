@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 
-# Promote pre-Verdikt variables without overriding explicitly configured values.
-while IFS='=' read -r name value; do
-  if [[ "${name}" == MCP_GUARD_* ]]; then
-    verdikt_name="VERDIKT_${name#MCP_GUARD_}"
-    if [[ -z "${!verdikt_name+x}" ]]; then
-      export "${verdikt_name}=${value}"
+# Promote pre-Judikt variables without overriding explicitly configured values.
+for legacy_prefix in MCP_GUARD_; do
+  while IFS="=" read -r name value; do
+    if [[ "${name}" != "${legacy_prefix}"* ]]; then
+      continue
     fi
-  fi
-done < <(env)
+    suffix="${name#"${legacy_prefix}"}"
+    judikt_name="JUDIKT_${suffix}"
+    if [[ -z "${!judikt_name+x}" ]]; then
+      export "${judikt_name}=${value}"
+    fi
+  done < <(env)
+done

@@ -1,6 +1,6 @@
 # AWS AIOps / LLMOps Skill Plan
 
-Use Verdikt as a practical AWS learning project instead of a static demo.
+Use Judikt as a practical AWS learning project instead of a static demo.
 
 ## Phase 1: Free-Tier Deployment
 
@@ -28,11 +28,11 @@ Resume signal: serverless architecture, event-driven AIOps, DynamoDB state model
 
 ## Deployment Comparison
 
-Verdikt has two AWS learning paths. They are useful for different reasons.
+Judikt has two AWS learning paths. They are useful for different reasons.
 
 ### Free-Tier Real MCP Deployment
 
-This is the main deployment path for the project. The MCP client can run locally, while Verdikt runs on AWS as a Dockerized real MCP Streamable HTTP server on EC2.
+This is the main deployment path for the project. The MCP client can run locally, while Judikt runs on AWS as a Dockerized real MCP Streamable HTTP server on EC2.
 
 AWS services involved:
 
@@ -61,7 +61,7 @@ Hiring signal:
 
 ### Serverless AIOps Deployment
 
-This is the AWS-native AIOps architecture variant. It does not run the real MCP transport. Instead, it applies the same Verdikt safety model to an event-driven serverless control plane.
+This is the AWS-native AIOps architecture variant. It does not run the real MCP transport. Instead, it applies the same Judikt safety model to an event-driven serverless control plane.
 
 AWS services involved:
 
@@ -81,7 +81,7 @@ Why it matters:
 - It shows deeper AWS-native architecture skills.
 - It demonstrates event-driven remediation patterns.
 - It shows DynamoDB state modeling, custom metrics, alarms, tracing, and DLQ handling.
-- It is useful for explaining how Verdikt could evolve into a larger AIOps platform.
+- It is useful for explaining how Judikt could evolve into a larger AIOps platform.
 
 Hiring signal:
 
@@ -92,7 +92,7 @@ Hiring signal:
 
 Lead with the free-tier real MCP deployment because it is simpler, more honest, and directly tied to MCP:
 
-> Local MCP client -> AWS EC2 real MCP server -> Verdikt runtime -> guarded operational tools.
+> Local MCP client -> AWS EC2 real MCP server -> Judikt runtime -> guarded operational tools.
 
 Mention the serverless deployment as an additional AWS/AIOps exploration:
 

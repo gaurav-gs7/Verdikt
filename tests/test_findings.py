@@ -13,13 +13,13 @@ import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
-from verdikt.findings import (
+from judikt.findings import (
     ArgusAlertmanagerSink,
     FindingDispatcher,
     build_finding_event,
     should_emit_finding,
 )
-from verdikt.ops_runtime import VerdiktOpsRuntime
+from judikt.ops_runtime import JudiktOpsRuntime
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -126,8 +126,8 @@ class FindingDispatcherTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ,
             {
-                "VERDIKT_FINDING_RETRY_INTERVAL_SECONDS": "0.01",
-                "VERDIKT_FINDING_RETRY_BASE_SECONDS": "0.01",
+                "JUDIKT_FINDING_RETRY_INTERVAL_SECONDS": "0.01",
+                "JUDIKT_FINDING_RETRY_BASE_SECONDS": "0.01",
             },
             clear=False,
         ):
@@ -145,7 +145,7 @@ class FindingDispatcherTest(unittest.TestCase):
 
     def test_argus_sink_emits_real_alertmanager_contract_and_signature(self) -> None:
         captured: list[dict[str, object]] = []
-        with patch("verdikt.findings.urllib.request.urlopen", side_effect=_capture_urlopen(captured)):
+        with patch("judikt.findings.urllib.request.urlopen", side_effect=_capture_urlopen(captured)):
             sink = ArgusAlertmanagerSink(
                 "http://127.0.0.1:8081",
                 "operator-owned-token",
@@ -160,9 +160,9 @@ class FindingDispatcherTest(unittest.TestCase):
         self.assertEqual(request["url"], "http://127.0.0.1:8081/v1/alerts/alertmanager")
         self.assertEqual(request["headers"]["authorization"], "Bearer operator-owned-token")
         expected = "sha256=" + hmac.new(b"signing-secret", body, hashlib.sha256).hexdigest()
-        self.assertEqual(request["headers"]["x-verdikt-signature-256"], expected)
-        self.assertEqual(payload["receiver"], "verdikt")
-        self.assertEqual(payload["alerts"][0]["labels"]["alertname"], "VerdiktMCPSecurityFinding")
+        self.assertEqual(request["headers"]["x-judikt-signature-256"], expected)
+        self.assertEqual(payload["receiver"], "judikt")
+        self.assertEqual(payload["alerts"][0]["labels"]["alertname"], "JudiktMCPSecurityFinding")
         rendered = json.dumps(payload)
         self.assertNotIn("private.invalid", rendered)
 
@@ -171,15 +171,15 @@ class FindingDispatcherTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ,
             {
-                "VERDIKT_ARGUS_URL": "http://127.0.0.1:8081",
-                "VERDIKT_ARGUS_API_TOKEN": "argus-service-token",
+                "JUDIKT_ARGUS_URL": "http://127.0.0.1:8081",
+                "JUDIKT_ARGUS_API_TOKEN": "argus-service-token",
             },
             clear=False,
         ), patch(
-            "verdikt.findings.urllib.request.urlopen",
+            "judikt.findings.urllib.request.urlopen",
             side_effect=_capture_urlopen(captured),
         ):
-            runtime = VerdiktOpsRuntime(POLICY, Path(directory) / "audit.db")
+            runtime = JudiktOpsRuntime(POLICY, Path(directory) / "audit.db")
             try:
                 result = runtime.call_tool(
                     "platform-ops",
@@ -189,7 +189,7 @@ class FindingDispatcherTest(unittest.TestCase):
                 self.assertFalse(result.allowed)
                 self.assertEqual(runtime.finding_delivery()["delivered"], 1)
                 self.assertIn(
-                    'verdikt_findings_total{outcome="delivered"} 1',
+                    'judikt_findings_total{outcome="delivered"} 1',
                     runtime.render_metrics(),
                 )
             finally:
@@ -205,7 +205,7 @@ class FindingDispatcherTest(unittest.TestCase):
         self.assertFalse(should_emit_finding("allow", "critical", True))
         with patch.dict(
             os.environ,
-            {"VERDIKT_FINDING_INCLUDE_ALLOWED_CRITICAL": "true"},
+            {"JUDIKT_FINDING_INCLUDE_ALLOWED_CRITICAL": "true"},
             clear=False,
         ):
             self.assertTrue(should_emit_finding("allow", "critical", True))
@@ -231,7 +231,7 @@ class FindingDispatcherTest(unittest.TestCase):
         self.assertEqual(len(event["correlation_id_hash"]), 64)
 
     def test_repeated_rule_is_deduplicated_within_incident_window(self) -> None:
-        with patch("verdikt.findings.time.time", return_value=1_800_000_000):
+        with patch("judikt.findings.time.time", return_value=1_800_000_000):
             first = _event({"command": "curl https://one.invalid"})
             second = build_finding_event(
                 correlation_id="corr-456",
@@ -254,9 +254,9 @@ class FindingDispatcherTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ,
             {
-                "VERDIKT_ARGUS_URL": "http://127.0.0.1:8081",
-                "VERDIKT_ARGUS_API_TOKEN": "",
-                "VERDIKT_ARGUS_TOKEN_SECRET_ARN": "",
+                "JUDIKT_ARGUS_URL": "http://127.0.0.1:8081",
+                "JUDIKT_ARGUS_API_TOKEN": "",
+                "JUDIKT_ARGUS_TOKEN_SECRET_ARN": "",
             },
             clear=False,
         ):
@@ -266,7 +266,7 @@ class FindingDispatcherTest(unittest.TestCase):
     def test_disabled_dispatcher_has_stable_status_and_idempotent_close(self) -> None:
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ,
-            {"VERDIKT_ARGUS_URL": "", "VERDIKT_FINDING_RETRY_INTERVAL_SECONDS": "bad"},
+            {"JUDIKT_ARGUS_URL": "", "JUDIKT_FINDING_RETRY_INTERVAL_SECONDS": "bad"},
             clear=False,
         ):
             dispatcher = FindingDispatcher(Path(directory) / "findings.db")
@@ -288,8 +288,8 @@ class FindingDispatcherTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ,
             {
-                "VERDIKT_FINDING_RETRY_INTERVAL_SECONDS": "60",
-                "VERDIKT_FINDING_RETRY_BASE_SECONDS": "0.01",
+                "JUDIKT_FINDING_RETRY_INTERVAL_SECONDS": "60",
+                "JUDIKT_FINDING_RETRY_BASE_SECONDS": "0.01",
             },
             clear=False,
         ):
@@ -342,7 +342,7 @@ class FindingDispatcherTest(unittest.TestCase):
                 ArgusAlertmanagerSink(url, "token", 1, "")
 
         with patch.dict(
-            os.environ, {"VERDIKT_ARGUS_ALLOW_INSECURE_HTTP": "true"}, clear=False
+            os.environ, {"JUDIKT_ARGUS_ALLOW_INSECURE_HTTP": "true"}, clear=False
         ):
             sink = ArgusAlertmanagerSink(
                 "http://argus.example.com/v1/alerts/alertmanager/", "token", 1, ""
@@ -358,8 +358,8 @@ class FindingDispatcherTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             for name, value in (
-                ("VERDIKT_FINDING_RETRY_INTERVAL_SECONDS", "bad"),
-                ("VERDIKT_FINDING_RETRY_BASE_SECONDS", "0"),
+                ("JUDIKT_FINDING_RETRY_INTERVAL_SECONDS", "bad"),
+                ("JUDIKT_FINDING_RETRY_BASE_SECONDS", "0"),
             ):
                 with self.subTest(name=name), patch.dict(os.environ, {name: value}, clear=False):
                     with self.assertRaisesRegex(ValueError, name):
@@ -368,7 +368,7 @@ class FindingDispatcherTest(unittest.TestCase):
     def test_invalid_dedupe_window_is_rejected(self) -> None:
         for value in ("bad", "0", "-1"):
             with self.subTest(value=value), patch.dict(
-                os.environ, {"VERDIKT_FINDING_DEDUPE_WINDOW_SECONDS": value}, clear=False
+                os.environ, {"JUDIKT_FINDING_DEDUPE_WINDOW_SECONDS": value}, clear=False
             ), self.assertRaisesRegex(ValueError, "DEDUPE_WINDOW"):
                 _event()
 
@@ -383,7 +383,7 @@ class FindingDispatcherTest(unittest.TestCase):
         ]
         for failure, message in failures:
             with self.subTest(failure=failure), patch(
-                "verdikt.findings.urllib.request.urlopen", side_effect=failure
+                "judikt.findings.urllib.request.urlopen", side_effect=failure
             ), self.assertRaisesRegex(RuntimeError, message):
                 sink.send(_event())
 
@@ -391,7 +391,7 @@ class FindingDispatcherTest(unittest.TestCase):
             status = 500
 
         with patch(
-            "verdikt.findings.urllib.request.urlopen", return_value=RejectedResponse()
+            "judikt.findings.urllib.request.urlopen", return_value=RejectedResponse()
         ), self.assertRaisesRegex(RuntimeError, "HTTP 500"):
             sink.send(_event())
 
@@ -409,9 +409,9 @@ class FindingDispatcherTest(unittest.TestCase):
         ), patch.dict(
             os.environ,
             {
-                "VERDIKT_ARGUS_URL": "http://127.0.0.1:8081",
-                "VERDIKT_ARGUS_API_TOKEN": "",
-                "VERDIKT_ARGUS_TOKEN_SECRET_ARN": "arn:aws:secretsmanager:test:argus",
+                "JUDIKT_ARGUS_URL": "http://127.0.0.1:8081",
+                "JUDIKT_ARGUS_API_TOKEN": "",
+                "JUDIKT_ARGUS_TOKEN_SECRET_ARN": "arn:aws:secretsmanager:test:argus",
             },
             clear=False,
         ):
@@ -428,25 +428,25 @@ class FindingDispatcherTest(unittest.TestCase):
         ), patch.dict(
             os.environ,
             {
-                "VERDIKT_ARGUS_URL": "http://127.0.0.1:8081",
-                "VERDIKT_ARGUS_API_TOKEN": "",
-                "VERDIKT_ARGUS_TOKEN_SECRET_ARN": "binary-secret",
+                "JUDIKT_ARGUS_URL": "http://127.0.0.1:8081",
+                "JUDIKT_ARGUS_API_TOKEN": "",
+                "JUDIKT_ARGUS_TOKEN_SECRET_ARN": "binary-secret",
             },
             clear=False,
         ), self.assertRaisesRegex(RuntimeError, "has no SecretString"):
             FindingDispatcher(Path("unused.db"))
 
     def test_finding_rule_override_and_dedupe_bucket_rollover(self) -> None:
-        with patch.dict(os.environ, {"VERDIKT_FINDING_RULES": "custom_rule"}, clear=False):
+        with patch.dict(os.environ, {"JUDIKT_FINDING_RULES": "custom_rule"}, clear=False):
             self.assertTrue(should_emit_finding("custom_rule", "low", False))
             self.assertFalse(should_emit_finding("blocked_pattern", "critical", False))
 
         with patch.dict(
-            os.environ, {"VERDIKT_FINDING_DEDUPE_WINDOW_SECONDS": "60"}, clear=False
+            os.environ, {"JUDIKT_FINDING_DEDUPE_WINDOW_SECONDS": "60"}, clear=False
         ):
-            with patch("verdikt.findings.time.time", return_value=120):
+            with patch("judikt.findings.time.time", return_value=120):
                 first = _event()
-            with patch("verdikt.findings.time.time", return_value=180):
+            with patch("judikt.findings.time.time", return_value=180):
                 second = _event()
         self.assertNotEqual(first["dedupe_key"], second["dedupe_key"])
 

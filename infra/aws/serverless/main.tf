@@ -10,14 +10,14 @@ data "aws_caller_identity" "current" {}
 
 locals {
   common_tags = {
-    Project     = "Verdikt"
+    Project     = "Judikt"
     ManagedBy   = "Terraform"
     Environment = "serverless-demo"
   }
 
   gateway_function_name = "${var.app_name}-gateway"
   tool_function_name    = "${var.app_name}-mock-tool"
-  metric_namespace      = "Verdikt/Serverless"
+  metric_namespace      = "Judikt/Serverless"
 }
 
 resource "aws_dynamodb_table" "state" {
@@ -92,13 +92,13 @@ resource "aws_dynamodb_table_item" "default_policy" {
 
 resource "aws_secretsmanager_secret" "api_token" {
   name                    = "${var.app_name}/api-token"
-  description             = "Bearer token for Verdikt serverless API callers."
+  description             = "Bearer token for Judikt serverless API callers."
   recovery_window_in_days = 0
 }
 
 resource "aws_secretsmanager_secret" "approval_secret" {
   name                    = "${var.app_name}/approval-secret"
-  description             = "HMAC secret for Verdikt signed approval tokens."
+  description             = "HMAC secret for Judikt signed approval tokens."
   recovery_window_in_days = 0
 }
 
@@ -133,7 +133,7 @@ resource "aws_cloudwatch_event_rule" "remediation_findings" {
   event_bus_name = aws_cloudwatch_event_bus.bus.name
 
   event_pattern = jsonencode({
-    source        = ["verdikt.mcp"]
+    source        = ["judikt.mcp"]
     "detail-type" = ["RemediationFinding"]
   })
 }
@@ -141,7 +141,7 @@ resource "aws_cloudwatch_event_rule" "remediation_findings" {
 resource "aws_cloudwatch_event_target" "findings_queue" {
   rule           = aws_cloudwatch_event_rule.remediation_findings.name
   event_bus_name = aws_cloudwatch_event_bus.bus.name
-  target_id      = "verdikt-findings"
+  target_id      = "judikt-findings"
   arn            = aws_sqs_queue.findings.arn
 }
 
@@ -317,7 +317,7 @@ resource "aws_cloudwatch_log_group" "tool" {
 resource "aws_lambda_function" "tool" {
   function_name                  = local.tool_function_name
   role                           = aws_iam_role.tool_lambda.arn
-  handler                        = "verdikt.serverless.tool_handler"
+  handler                        = "judikt.serverless.tool_handler"
   runtime                        = var.lambda_runtime
   filename                       = var.lambda_zip_path
   source_code_hash               = filebase64sha256(var.lambda_zip_path)
@@ -347,7 +347,7 @@ resource "aws_lambda_function" "tool" {
 resource "aws_lambda_function" "gateway" {
   function_name                  = local.gateway_function_name
   role                           = aws_iam_role.gateway_lambda.arn
-  handler                        = "verdikt.serverless.gateway_handler"
+  handler                        = "judikt.serverless.gateway_handler"
   runtime                        = var.lambda_runtime
   filename                       = var.lambda_zip_path
   source_code_hash               = filebase64sha256(var.lambda_zip_path)
@@ -361,15 +361,15 @@ resource "aws_lambda_function" "gateway" {
 
   environment {
     variables = {
-      AUDIT_TABLE_NAME                 = aws_dynamodb_table.audit.name
-      AWS_XRAY_CONTEXT_MISSING         = "LOG_ERROR"
-      EVENT_BUS_NAME                   = aws_cloudwatch_event_bus.bus.name
-      VERDIKT_API_TOKEN_SECRET_ARN     = aws_secretsmanager_secret.api_token.arn
-      VERDIKT_APPROVAL_SECRET_ARN      = aws_secretsmanager_secret.approval_secret.arn
-      VERDIKT_AUDIT_HMAC_SECRET_ARN    = aws_secretsmanager_secret.audit_hmac_secret.arn
-      VERDIKT_AUDIT_SIGNATURE_REQUIRED = "true"
-      STATE_TABLE_NAME                 = aws_dynamodb_table.state.name
-      TOOL_FUNCTION_NAME               = aws_lambda_function.tool.function_name
+      AUDIT_TABLE_NAME                = aws_dynamodb_table.audit.name
+      AWS_XRAY_CONTEXT_MISSING        = "LOG_ERROR"
+      EVENT_BUS_NAME                  = aws_cloudwatch_event_bus.bus.name
+      JUDIKT_API_TOKEN_SECRET_ARN     = aws_secretsmanager_secret.api_token.arn
+      JUDIKT_APPROVAL_SECRET_ARN      = aws_secretsmanager_secret.approval_secret.arn
+      JUDIKT_AUDIT_HMAC_SECRET_ARN    = aws_secretsmanager_secret.audit_hmac_secret.arn
+      JUDIKT_AUDIT_SIGNATURE_REQUIRED = "true"
+      STATE_TABLE_NAME                = aws_dynamodb_table.state.name
+      TOOL_FUNCTION_NAME              = aws_lambda_function.tool.function_name
     }
   }
 
@@ -474,7 +474,7 @@ resource "aws_cloudwatch_dashboard" "ops" {
         width  = 12
         height = 6
         properties = {
-          title   = "Verdikt Decisions"
+          title   = "Judikt Decisions"
           region  = var.aws_region
           view    = "timeSeries"
           stacked = false

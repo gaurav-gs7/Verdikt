@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from verdikt.cli import PROJECT_ROOT
-from verdikt.interop import load_interop_profiles, run_interop_profiles
+from judikt.cli import PROJECT_ROOT
+from judikt.interop import load_interop_profiles, run_interop_profiles
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "external_mcp_server.py"

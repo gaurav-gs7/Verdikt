@@ -1,0 +1,108 @@
+replicaCount: 1
+
+image:
+  repository: judikt
+  tag: local
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  name: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: judikt.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+auth:
+  bearerToken: ""
+  jwtHs256Secret: ""
+  jwtIssuer: ""
+  jwtAudience: ""
+  jwtRequiredGroup: ""
+  jwtJwksUrl: ""
+  resourceUri: ""
+  authorizationServer: ""
+  requiredScopes: "mcp:tools"
+  adminScope: "mcp:admin"
+  allowedOrigins: ""
+
+approvalSecret: ""
+
+audit:
+  hmacSecret: ""
+  signatureRequired: true
+  verifyOnStartup: true
+  sink: none
+  sinkStrict: false
+
+siem:
+  url: ""
+  protocol: json
+  token: ""
+  hmacSecret: ""
+  timeoutSeconds: 2
+  allowInsecureHttp: false
+
+redis:
+  url: ""
+  required: false
+
+argus:
+  url: ""
+  apiToken: ""
+  hmacSecret: ""
+  allowInsecureHttp: false
+
+telemetry:
+  mode: disabled
+  otlpEndpoint: ""
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  storageClass: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsGroup: 10001
+  runAsNonRoot: true
+  runAsUser: 10001
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+serviceMonitor:
+  enabled: false
+  interval: 15s

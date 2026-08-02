@@ -1,6 +1,6 @@
 # Performance Evidence
 
-Verdikt includes a reproducible benchmark for the overhead added around one allowed built-in MCP tool call. The command writes machine-readable JSON and can enforce conservative p99 and throughput thresholds in CI.
+Judikt includes a reproducible benchmark for the overhead added around one allowed built-in MCP tool call. The command writes machine-readable JSON and can enforce conservative p99 and throughput thresholds in CI.
 
 ```bash
 ./scripts/run_performance_benchmark.sh build/performance-local.json \
@@ -45,12 +45,12 @@ These numbers are evidence about this exact workload and environment, not a prod
 
 ## CI Contract
 
-GitHub Actions runs 25 measured calls after 5 warmups with deliberately loose smoke thresholds of 100 ms p99 and 10 calls/second. The goal is regression detection across shared runners, not marketing-grade performance comparison. The `verdikt-ci-evidence` artifact contains both performance and attack-benchmark JSON.
+GitHub Actions runs 25 measured calls after 5 warmups with deliberately loose smoke thresholds of 100 ms p99 and 10 calls/second. The goal is regression detection across shared runners, not marketing-grade performance comparison. The `judikt-ci-evidence` artifact contains both performance and attack-benchmark JSON.
 
 The CLI exits nonzero when either configured threshold fails:
 
 ```bash
-PYTHONPATH=src python3 -m verdikt.cli performance \
+PYTHONPATH=src python3 -m judikt.cli performance \
   --max-p99-ms 25 \
   --min-throughput 100 \
   --output build/performance-report.json

@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    VERDIKT_PROJECT_ROOT=/app
+    JUDIKT_PROJECT_ROOT=/app
 
 WORKDIR /app
 
@@ -13,10 +13,10 @@ COPY src ./src
 
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir '.[mcp,observability,auth,redis,aws]' \
-    && groupadd --gid 10001 verdikt \
-    && useradd --uid 10001 --gid verdikt --no-create-home --shell /usr/sbin/nologin verdikt \
+    && groupadd --gid 10001 judikt \
+    && useradd --uid 10001 --gid judikt --no-create-home --shell /usr/sbin/nologin judikt \
     && mkdir -p /app/data \
-    && chown verdikt:verdikt /app/data
+    && chown judikt:judikt /app/data
 
 EXPOSE 8080
 

@@ -1,6 +1,6 @@
 # MCP-AttackBench Evaluation
 
-Verdikt includes a reproducible adapter for labeled MCP security datasets, including the input and metric shape needed to evaluate an acquired MCP-AttackBench corpus. The evaluator runs the same deterministic content and argument controls used in the gateway; it does not use an LLM judge.
+Judikt includes a reproducible adapter for labeled MCP security datasets, including the input and metric shape needed to evaluate an acquired MCP-AttackBench corpus. The evaluator runs the same deterministic content and argument controls used in the gateway; it does not use an LLM judge.
 
 The [MCP-AttackBench paper](https://arxiv.org/abs/2508.10991) reports 70,448 samples across jailbreak, prompt injection, cross-origin escalation, tool manipulation, command injection, data exfiltration, SQL injection, and related attacks. The [ACL Findings paper](https://aclanthology.org/2026.findings-acl.240/) defines accuracy, precision, recall, F1, and average latency as evaluation metrics.
 
@@ -13,14 +13,14 @@ The repository does not vendor or redistribute the paper's full corpus. The bund
 | Tier 2 CI smoke profile | 8 | 1.0 | 1.0 | 1.0 | Parser, detector, metrics, threshold, and privacy regression only |
 | Full MCP-AttackBench | 70,448 expected | Not published | Not published | Not published | Run after obtaining the independently maintained corpus |
 
-CI stores the smoke JSON inside the `verdikt-ci-evidence` artifact. A full result is publishable only when the report records `sample_count: 70448` and the input digest of the acquired corpus.
+CI stores the smoke JSON inside the `judikt-ci-evidence` artifact. A full result is publishable only when the report records `sample_count: 70448` and the input digest of the acquired corpus.
 
 ## Run It
 
 JSON, JSONL, NDJSON, and CSV work without another dependency:
 
 ```bash
-PYTHONPATH=src ./scripts/python.sh -m verdikt.cli attackbench \
+PYTHONPATH=src ./scripts/python.sh -m judikt.cli attackbench \
   /path/to/mcp-attackbench.jsonl \
   --dataset-id mcp-attackbench-2508.10991 \
   --expected-samples 70448 \
@@ -56,4 +56,4 @@ For each record, the evaluator:
 
 ## Interpretation
 
-This adapter measures deterministic detection coverage, not the entire gateway. Some MCP-AttackBench scenarios require session context, caller identity, or a before/after tool definition. Those controls are tested separately by the OAuth, origin, metadata-pinning, and interoperability suites. A published report should therefore include both the benchmark output and the standard Verdikt test evidence.
+This adapter measures deterministic detection coverage, not the entire gateway. Some MCP-AttackBench scenarios require session context, caller identity, or a before/after tool definition. Those controls are tested separately by the OAuth, origin, metadata-pinning, and interoperability suites. A published report should therefore include both the benchmark output and the standard Judikt test evidence.

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from verdikt.protocol import MCPProtocolError, StdioMCPClient, is_mcp_tool_error
+from judikt.protocol import MCPProtocolError, StdioMCPClient, is_mcp_tool_error
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "external_mcp_server.py"

@@ -6,11 +6,11 @@ import unittest
 import urllib.request
 from unittest.mock import patch
 
-from verdikt.secrets import SecretBrokerError, read_vault_secret
+from judikt.secrets import SecretBrokerError, read_vault_secret
 
 
-VAULT_ADDR = os.getenv("VERDIKT_TEST_VAULT_ADDR", "")
-VAULT_TOKEN = os.getenv("VERDIKT_TEST_VAULT_TOKEN", "")
+VAULT_ADDR = os.getenv("JUDIKT_TEST_VAULT_ADDR", "")
+VAULT_TOKEN = os.getenv("JUDIKT_TEST_VAULT_TOKEN", "")
 
 
 @unittest.skipUnless(
@@ -20,7 +20,7 @@ VAULT_TOKEN = os.getenv("VERDIKT_TEST_VAULT_TOKEN", "")
 class RealVaultIntegrationTest(unittest.TestCase):
     def setUp(self) -> None:
         request = urllib.request.Request(
-            VAULT_ADDR.rstrip("/") + "/v1/secret/data/verdikt/integration",
+            VAULT_ADDR.rstrip("/") + "/v1/secret/data/judikt/integration",
             data=json.dumps(
                 {"data": {"api_token": "real-vault-integration-secret"}}
             ).encode(),
@@ -37,14 +37,14 @@ class RealVaultIntegrationTest(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "VERDIKT_VAULT_ADDR": VAULT_ADDR,
-                "VERDIKT_VAULT_TOKEN": VAULT_TOKEN,
-                "VERDIKT_SECRET_TIMEOUT_SECONDS": "2",
+                "JUDIKT_VAULT_ADDR": VAULT_ADDR,
+                "JUDIKT_VAULT_TOKEN": VAULT_TOKEN,
+                "JUDIKT_SECRET_TIMEOUT_SECONDS": "2",
             },
             clear=True,
         ):
             value = read_vault_secret(
-                "secret/data/verdikt/integration",
+                "secret/data/judikt/integration",
                 "api_token",
             )
 
@@ -54,13 +54,13 @@ class RealVaultIntegrationTest(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "VERDIKT_VAULT_ADDR": VAULT_ADDR,
-                "VERDIKT_VAULT_TOKEN": VAULT_TOKEN,
+                "JUDIKT_VAULT_ADDR": VAULT_ADDR,
+                "JUDIKT_VAULT_TOKEN": VAULT_TOKEN,
             },
             clear=True,
         ), self.assertRaisesRegex(SecretBrokerError, "Vault returned HTTP 404"):
             read_vault_secret(
-                "secret/data/verdikt/does-not-exist",
+                "secret/data/judikt/does-not-exist",
                 "api_token",
             )
 

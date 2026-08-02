@@ -6,7 +6,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from verdikt.backends import (
+from judikt.backends import (
     INCIDENT_TOOLS,
     KUBERNETES_TOOLS,
     PLATFORM_TOOLS,
@@ -15,7 +15,7 @@ from verdikt.backends import (
     PlatformOpsBackend,
     run_backend,
 )
-from verdikt.protocol import MCPProtocolError
+from judikt.protocol import MCPProtocolError
 
 
 class PlatformOpsBackendTest(unittest.TestCase):
@@ -92,7 +92,7 @@ class PlatformOpsBackendTest(unittest.TestCase):
 
 class KubernetesBackendTest(unittest.TestCase):
     def test_simulator_supports_all_tools_and_unknown_paths(self) -> None:
-        with patch.dict(os.environ, {"VERDIKT_KUBERNETES_MODE": "simulated"}, clear=False):
+        with patch.dict(os.environ, {"JUDIKT_KUBERNETES_MODE": "simulated"}, clear=False):
             backend = KubernetesBackend()
         pod = backend.call(
             "kubernetes.get_pod",
@@ -127,7 +127,7 @@ class KubernetesBackendTest(unittest.TestCase):
 
     def test_invalid_mode_does_not_silently_fall_back_to_simulation(self) -> None:
         with patch.dict(
-            os.environ, {"VERDIKT_KUBERNETES_MODE": "kubeclt"}, clear=False
+            os.environ, {"JUDIKT_KUBERNETES_MODE": "kubeclt"}, clear=False
         ), self.assertRaisesRegex(ValueError, "simulated or kubectl"):
             KubernetesBackend()
 
@@ -141,8 +141,8 @@ class KubernetesBackendTest(unittest.TestCase):
             return SimpleNamespace(returncode=0, stdout="successful", stderr="")
 
         with patch.dict(
-            os.environ, {"VERDIKT_KUBERNETES_MODE": "kubectl"}, clear=False
-        ), patch("verdikt.backends.subprocess.run", side_effect=run):
+            os.environ, {"JUDIKT_KUBERNETES_MODE": "kubectl"}, clear=False
+        ), patch("judikt.backends.subprocess.run", side_effect=run):
             backend = KubernetesBackend()
             pod = backend.call(
                 "kubernetes.get_pod", {"namespace": "prod", "pod": "payments-abc"}
@@ -175,12 +175,12 @@ class KubernetesBackendTest(unittest.TestCase):
         ]
         for failure, message in failures:
             with self.subTest(message=message), patch(
-                "verdikt.backends.subprocess.run", side_effect=failure
+                "judikt.backends.subprocess.run", side_effect=failure
             ), self.assertRaisesRegex(MCPProtocolError, message):
                 KubernetesBackend._kubectl(["get", "pod", "x"])
 
         with patch(
-            "verdikt.backends.subprocess.run",
+            "judikt.backends.subprocess.run",
             return_value=SimpleNamespace(
                 returncode=7, stdout="", stderr="token=private-cluster-secret"
             ),
@@ -191,7 +191,7 @@ class KubernetesBackendTest(unittest.TestCase):
         invalid_json = ["not-json", "[]"]
         for output in invalid_json:
             with self.subTest(output=output), patch(
-                "verdikt.backends.KubernetesBackend._kubectl", return_value=output
+                "judikt.backends.KubernetesBackend._kubectl", return_value=output
             ), self.assertRaisesRegex(MCPProtocolError, "malformed JSON|non-object"):
                 KubernetesBackend()._kubectl_json(["get", "pod", "x"])
 
@@ -226,7 +226,7 @@ class BackendEntrypointTest(unittest.TestCase):
             "incident": ("incident-mcp", INCIDENT_TOOLS),
         }
         for name, (server_name, tools) in expected.items():
-            with self.subTest(name=name), patch("verdikt.backends.serve_stdio") as serve:
+            with self.subTest(name=name), patch("judikt.backends.serve_stdio") as serve:
                 run_backend(name)
             self.assertEqual(serve.call_args.args[0], server_name)
             self.assertEqual(serve.call_args.args[1], tools)

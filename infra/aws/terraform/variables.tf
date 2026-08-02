@@ -1,5 +1,5 @@
 variable "aws_region" {
-  description = "AWS region for all Verdikt resources."
+  description = "AWS region for all Judikt resources."
   type        = string
   default     = "us-east-1"
 }
@@ -7,13 +7,13 @@ variable "aws_region" {
 variable "app_name" {
   description = "Name prefix for EC2, IAM, and security group resources."
   type        = string
-  default     = "verdikt-tf"
+  default     = "judikt-tf"
 }
 
 variable "repository_name" {
-  description = "ECR repository name for the Verdikt container image."
+  description = "ECR repository name for the Judikt container image."
   type        = string
-  default     = "verdikt"
+  default     = "judikt"
 }
 
 variable "image_tag" {
@@ -40,13 +40,13 @@ variable "ami_ssm_parameter" {
 }
 
 variable "app_port" {
-  description = "Host port exposed by the Verdikt dashboard."
+  description = "Host port exposed by the Judikt dashboard."
   type        = number
   default     = 8080
 }
 
 variable "allowed_cidr" {
-  description = "CIDR allowed to reach Verdikt. Defaults to loopback-only; set your public IP /32 for remote demos."
+  description = "CIDR allowed to reach Judikt. Defaults to loopback-only; set your public IP /32 for remote demos."
   type        = string
   default     = "127.0.0.1/32"
 
@@ -63,7 +63,7 @@ variable "root_volume_size_gb" {
 }
 
 variable "telemetry_mode" {
-  description = "Verdikt telemetry mode inside the container."
+  description = "Judikt telemetry mode inside the container."
   type        = string
   default     = "disabled"
 
@@ -92,7 +92,7 @@ variable "http_bearer_token" {
 }
 
 variable "approval_secret" {
-  description = "HMAC secret for signed Verdikt approval tokens."
+  description = "HMAC secret for signed Judikt approval tokens."
   type        = string
   default     = "local-dev-approval-secret-change-me"
   sensitive   = true

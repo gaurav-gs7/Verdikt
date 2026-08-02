@@ -5,14 +5,14 @@
         "npx",
         "-y",
         "@modelcontextprotocol/server-filesystem",
-        "/tmp/verdikt-sandbox"
+        "/tmp/judikt-sandbox"
       ]
     },
     "authenticated-example": {
       "command": ["python3", "/opt/company-mcp/server.py"],
       "env": {
         "UPSTREAM_API_TOKEN": {
-          "from_aws_secret": "verdikt/upstreams/company",
+          "from_aws_secret": "judikt/upstreams/company",
           "json_key": "api_token"
         }
       }
@@ -21,7 +21,7 @@
       "command": ["python3", "/opt/company-mcp/server.py"],
       "env": {
         "UPSTREAM_API_TOKEN": {
-          "from_vault": "secret/data/verdikt/company",
+          "from_vault": "secret/data/judikt/company",
           "json_key": "api_token"
         }
       }

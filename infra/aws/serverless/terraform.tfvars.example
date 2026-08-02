@@ -1,6 +1,6 @@
 aws_region      = "us-east-1"
-app_name        = "verdikt-serverless"
-lambda_zip_path = "../../../build/verdikt-serverless.zip"
+app_name        = "judikt-serverless"
+lambda_zip_path = "../../../build/judikt-serverless.zip"
 
 # Secret values are supplied to scripts/aws/deploy_serverless.sh through environment
 # variables and written with AWS CLI so they are not recorded in Terraform state.

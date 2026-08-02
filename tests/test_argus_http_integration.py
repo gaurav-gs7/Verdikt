@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
-from verdikt.findings import FindingDispatcher, build_finding_event
+from judikt.findings import FindingDispatcher, build_finding_event
 
 
 class ArgusHTTPIntegrationTest(unittest.TestCase):
@@ -42,11 +42,11 @@ class ArgusHTTPIntegrationTest(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory, patch.dict(
                 os.environ,
                 {
-                    "VERDIKT_ARGUS_URL": f"http://127.0.0.1:{server.server_port}",
-                    "VERDIKT_ARGUS_API_TOKEN": "operator-token",
-                    "VERDIKT_ARGUS_HMAC_SECRET": "event-signing-secret",
-                    "VERDIKT_FINDING_RETRY_INTERVAL_SECONDS": "0.1",
-                    "VERDIKT_FINDING_RETRY_BASE_SECONDS": "0.01",
+                    "JUDIKT_ARGUS_URL": f"http://127.0.0.1:{server.server_port}",
+                    "JUDIKT_ARGUS_API_TOKEN": "operator-token",
+                    "JUDIKT_ARGUS_HMAC_SECRET": "event-signing-secret",
+                    "JUDIKT_FINDING_RETRY_INTERVAL_SECONDS": "0.1",
+                    "JUDIKT_FINDING_RETRY_BASE_SECONDS": "0.01",
                 },
                 clear=False,
             ):
@@ -84,12 +84,12 @@ class ArgusHTTPIntegrationTest(unittest.TestCase):
         expected = "sha256=" + hmac.new(
             b"event-signing-secret", delivered["body"], hashlib.sha256
         ).hexdigest()
-        self.assertEqual(delivered["headers"]["x-verdikt-signature-256"], expected)
+        self.assertEqual(delivered["headers"]["x-judikt-signature-256"], expected)
         rendered = delivered["body"].decode()
         self.assertNotIn("private.invalid", rendered)
         self.assertNotIn("raw-result-secret", rendered)
         self.assertNotIn("secret reason", rendered)
-        self.assertEqual(json.loads(rendered)["receiver"], "verdikt")
+        self.assertEqual(json.loads(rendered)["receiver"], "judikt")
 
 
 if __name__ == "__main__":

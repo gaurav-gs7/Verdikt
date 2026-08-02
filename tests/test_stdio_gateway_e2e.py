@@ -8,8 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from verdikt.approval import ApprovalAuthority
-from verdikt.protocol import StdioMCPClient
+from judikt.approval import ApprovalAuthority
+from judikt.protocol import StdioMCPClient
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -21,21 +21,21 @@ class StdioGatewayEndToEndTest(unittest.TestCase):
         root = Path(self.temp_dir.name)
         self.environment = {
             "PYTHONPATH": str(PROJECT_ROOT / "src"),
-            "VERDIKT_APPROVAL_SECRET": "stdio-approval-secret",
-            "VERDIKT_AUDIT_HMAC_SECRET": "stdio-audit-secret",
-            "VERDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
-            "VERDIKT_AUDIT_SINK": "none",
-            "VERDIKT_TELEMETRY": "disabled",
-            "VERDIKT_TOOL_PIN_PATH": str(root / "pins.json"),
-            "VERDIKT_UPSTREAM_CONFIG": "",
+            "JUDIKT_APPROVAL_SECRET": "stdio-approval-secret",
+            "JUDIKT_AUDIT_HMAC_SECRET": "stdio-audit-secret",
+            "JUDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
+            "JUDIKT_AUDIT_SINK": "none",
+            "JUDIKT_TELEMETRY": "disabled",
+            "JUDIKT_TOOL_PIN_PATH": str(root / "pins.json"),
+            "JUDIKT_UPSTREAM_CONFIG": "",
             "GROQ_API_KEY": "",
         }
         self.client = StdioMCPClient(
-            "verdikt",
+            "judikt",
             command=[
                 sys.executable,
                 "-m",
-                "verdikt.cli",
+                "judikt.cli",
                 "--audit-db",
                 str(root / "audit.db"),
                 "serve-mcp",
@@ -189,18 +189,18 @@ class StdioServerResilienceTest(unittest.TestCase):
             environment = {
                 **os.environ,
                 "PYTHONPATH": str(PROJECT_ROOT / "src"),
-                "VERDIKT_APPROVAL_SECRET": "resilience-approval-secret",
-                "VERDIKT_AUDIT_HMAC_SECRET": "resilience-audit-secret",
-                "VERDIKT_AUDIT_SINK": "none",
-                "VERDIKT_TELEMETRY": "disabled",
-                "VERDIKT_TOOL_PIN_PATH": str(Path(directory) / "pins.json"),
-                "VERDIKT_UPSTREAM_CONFIG": "",
+                "JUDIKT_APPROVAL_SECRET": "resilience-approval-secret",
+                "JUDIKT_AUDIT_HMAC_SECRET": "resilience-audit-secret",
+                "JUDIKT_AUDIT_SINK": "none",
+                "JUDIKT_TELEMETRY": "disabled",
+                "JUDIKT_TOOL_PIN_PATH": str(Path(directory) / "pins.json"),
+                "JUDIKT_UPSTREAM_CONFIG": "",
             }
             process = subprocess.Popen(
                 [
                     sys.executable,
                     "-m",
-                    "verdikt.cli",
+                    "judikt.cli",
                     "--audit-db",
                     str(Path(directory) / "audit.db"),
                     "serve-mcp",

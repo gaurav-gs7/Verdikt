@@ -1,6 +1,6 @@
-# Verdikt SLOs
+# Judikt SLOs
 
-These SLOs frame Verdikt as an AI operations control plane. They are intentionally practical for a free-tier demo, but written the way a production service would be reviewed.
+These SLOs frame Judikt as an AI operations control plane. They are intentionally practical for a free-tier demo, but written the way a production service would be reviewed.
 
 ## Service Boundaries
 

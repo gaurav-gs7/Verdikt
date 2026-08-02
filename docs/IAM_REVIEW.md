@@ -7,7 +7,7 @@ This document explains why each AWS permission exists. It is useful for intervie
 Role:
 
 ```text
-verdikt-tf-ec2-role-<region>
+judikt-tf-ec2-role-<region>
 ```
 
 Permissions:
@@ -20,7 +20,7 @@ Permissions:
 - `ecr:BatchCheckLayerAvailability`
 - `ecr:BatchGetImage`
 - `ecr:GetDownloadUrlForLayer`
-  - Scoped to the Verdikt ECR repository ARN.
+  - Scoped to the Judikt ECR repository ARN.
   - Required to pull the container image.
 - `secretsmanager:GetSecretValue`
   - Scoped to the HTTP bearer token and approval secret ARNs.
@@ -49,9 +49,9 @@ Gateway Lambda role:
 - `dynamodb:GetItem`, `PutItem`, `Query`, `Scan`, `UpdateItem`
   - Scoped to state and audit tables.
 - `events:PutEvents`
-  - Scoped to the Verdikt EventBridge bus.
+  - Scoped to the Judikt EventBridge bus.
 - `cloudwatch:PutMetricData`
-  - Restricted to namespace `Verdikt/Serverless`.
+  - Restricted to namespace `Judikt/Serverless`.
 - `secretsmanager:GetSecretValue`
   - Scoped to API token and approval secret.
 - `AWSLambdaBasicExecutionRole`

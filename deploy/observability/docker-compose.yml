@@ -1,34 +1,34 @@
 services:
-  verdikt-init:
-    image: verdikt:observability
+  judikt-init:
+    image: judikt:observability
     user: "0:0"
     entrypoint: ["/bin/sh", "-c"]
     command: ["chown -R 10001:10001 /app/data"]
     restart: "no"
     volumes:
-      - verdikt-data:/app/data
+      - judikt-data:/app/data
 
-  verdikt:
+  judikt:
     build:
       context: ../..
-    image: verdikt:observability
+    image: judikt:observability
     environment:
-      VERDIKT_MODE: real-mcp
-      VERDIKT_HTTP_BEARER_TOKEN: local-dev-token
-      VERDIKT_APPROVAL_SECRET: local-dev-approval-secret
-      VERDIKT_AUDIT_HMAC_SECRET: local-dev-audit-secret
-      VERDIKT_AUDIT_SIGNATURE_REQUIRED: "true"
-      VERDIKT_AUDIT_VERIFY_ON_STARTUP: "true"
-      VERDIKT_REDIS_URL: redis://redis:6379/0
-      VERDIKT_REDIS_REQUIRED: "true"
-      VERDIKT_TELEMETRY: otlp
+      JUDIKT_MODE: real-mcp
+      JUDIKT_HTTP_BEARER_TOKEN: local-dev-token
+      JUDIKT_APPROVAL_SECRET: local-dev-approval-secret
+      JUDIKT_AUDIT_HMAC_SECRET: local-dev-audit-secret
+      JUDIKT_AUDIT_SIGNATURE_REQUIRED: "true"
+      JUDIKT_AUDIT_VERIFY_ON_STARTUP: "true"
+      JUDIKT_REDIS_URL: redis://redis:6379/0
+      JUDIKT_REDIS_REQUIRED: "true"
+      JUDIKT_TELEMETRY: otlp
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
     ports:
       - "8080:8080"
     volumes:
-      - verdikt-data:/app/data
+      - judikt-data:/app/data
     depends_on:
-      verdikt-init:
+      judikt-init:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
@@ -58,7 +58,7 @@ services:
     ports:
       - "9090:9090"
     depends_on:
-      - verdikt
+      - judikt
 
   tempo:
     image: grafana/tempo:2.6.1
@@ -94,5 +94,5 @@ services:
       - tempo
 
 volumes:
-  verdikt-data:
+  judikt-data:
   redis-data:

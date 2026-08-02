@@ -13,9 +13,9 @@ class DeploymentArtifactTest(unittest.TestCase):
     def test_serverless_deploy_fails_before_aws_when_secrets_are_missing(self) -> None:
         env = {
             **os.environ,
-            "VERDIKT_API_TOKEN": "",
-            "VERDIKT_APPROVAL_SECRET": "",
-            "VERDIKT_AUDIT_HMAC_SECRET": "",
+            "JUDIKT_API_TOKEN": "",
+            "JUDIKT_APPROVAL_SECRET": "",
+            "JUDIKT_AUDIT_HMAC_SECRET": "",
         }
         result = subprocess.run(
             [str(PROJECT_ROOT / "scripts" / "aws" / "deploy_serverless.sh")],
@@ -31,9 +31,9 @@ class DeploymentArtifactTest(unittest.TestCase):
     def test_serverless_deploy_rejects_key_reuse(self) -> None:
         env = {
             **os.environ,
-            "VERDIKT_API_TOKEN": "api-token",
-            "VERDIKT_APPROVAL_SECRET": "same-key",
-            "VERDIKT_AUDIT_HMAC_SECRET": "same-key",
+            "JUDIKT_API_TOKEN": "api-token",
+            "JUDIKT_APPROVAL_SECRET": "same-key",
+            "JUDIKT_AUDIT_HMAC_SECRET": "same-key",
         }
         result = subprocess.run(
             [str(PROJECT_ROOT / "scripts" / "aws" / "deploy_serverless.sh")],
@@ -49,26 +49,26 @@ class DeploymentArtifactTest(unittest.TestCase):
     def test_cloudformation_deploy_requires_independent_secrets(self) -> None:
         script = PROJECT_ROOT / "scripts" / "aws" / "deploy_ec2.sh"
         missing = subprocess.run(
-            [str(script), "example.invalid/verdikt:test"],
+            [str(script), "example.invalid/judikt:test"],
             cwd=PROJECT_ROOT,
             env={
                 **os.environ,
-                "VERDIKT_HTTP_BEARER_TOKEN": "",
-                "VERDIKT_APPROVAL_SECRET": "",
-                "VERDIKT_AUDIT_HMAC_SECRET": "",
+                "JUDIKT_HTTP_BEARER_TOKEN": "",
+                "JUDIKT_APPROVAL_SECRET": "",
+                "JUDIKT_AUDIT_HMAC_SECRET": "",
             },
             capture_output=True,
             text=True,
             check=False,
         )
         reused = subprocess.run(
-            [str(script), "example.invalid/verdikt:test"],
+            [str(script), "example.invalid/judikt:test"],
             cwd=PROJECT_ROOT,
             env={
                 **os.environ,
-                "VERDIKT_HTTP_BEARER_TOKEN": "a" * 20,
-                "VERDIKT_APPROVAL_SECRET": "same-signing-secret",
-                "VERDIKT_AUDIT_HMAC_SECRET": "same-signing-secret",
+                "JUDIKT_HTTP_BEARER_TOKEN": "a" * 20,
+                "JUDIKT_APPROVAL_SECRET": "same-signing-secret",
+                "JUDIKT_AUDIT_HMAC_SECRET": "same-signing-secret",
             },
             capture_output=True,
             text=True,
@@ -81,10 +81,10 @@ class DeploymentArtifactTest(unittest.TestCase):
         self.assertIn("must be independent", reused.stderr)
 
         template = (
-            PROJECT_ROOT / "infra" / "aws" / "cloudformation" / "verdikt-ec2.yml"
+            PROJECT_ROOT / "infra" / "aws" / "cloudformation" / "judikt-ec2.yml"
         ).read_text()
         self.assertIn("AuditHmacSecretValue", template)
-        self.assertIn("VERDIKT_AUDIT_HMAC_SECRET", template)
+        self.assertIn("JUDIKT_AUDIT_HMAC_SECRET", template)
         self.assertNotIn("set -euxo pipefail", template)
         self.assertIn("Default: 127.0.0.1/32", template)
 
@@ -94,7 +94,7 @@ class DeploymentArtifactTest(unittest.TestCase):
         self.assertIn('default     = "127.0.0.1/32"', terraform_variables)
         for name in ("deploy_ec2.sh", "deploy_terraform.sh", "destroy_terraform.sh"):
             aws_script = (PROJECT_ROOT / "scripts" / "aws" / name).read_text()
-            self.assertIn("VERDIKT_ALLOWED_CIDR:-127.0.0.1/32", aws_script)
+            self.assertIn("JUDIKT_ALLOWED_CIDR:-127.0.0.1/32", aws_script)
 
         deploy_workflow = (
             PROJECT_ROOT / ".github" / "workflows" / "aws-deploy.yml"
@@ -119,8 +119,8 @@ class DeploymentArtifactTest(unittest.TestCase):
     def test_serverless_terraform_wires_independent_audit_secret(self) -> None:
         terraform = (PROJECT_ROOT / "infra" / "aws" / "serverless" / "main.tf").read_text()
         self.assertIn('resource "aws_secretsmanager_secret" "audit_hmac_secret"', terraform)
-        self.assertIn("VERDIKT_AUDIT_HMAC_SECRET_ARN", terraform)
-        self.assertIn("VERDIKT_AUDIT_SIGNATURE_REQUIRED", terraform)
+        self.assertIn("JUDIKT_AUDIT_HMAC_SECRET_ARN", terraform)
+        self.assertIn("JUDIKT_AUDIT_SIGNATURE_REQUIRED", terraform)
         self.assertIn("aws_secretsmanager_secret.audit_hmac_secret.arn", terraform)
         self.assertNotIn('secret_string = var.', terraform)
         destroy_script = (
@@ -135,32 +135,32 @@ class DeploymentArtifactTest(unittest.TestCase):
         ).read_text()
         self.assertIn("--appendonly", compose)
         self.assertIn("redis-data:/data", compose)
-        self.assertIn("verdikt-data:/app/data", compose)
-        self.assertIn("verdikt-init:", compose)
+        self.assertIn("judikt-data:/app/data", compose)
+        self.assertIn("judikt-init:", compose)
         self.assertIn("chown -R 10001:10001 /app/data", compose)
         self.assertIn("service_completed_successfully", compose)
 
         deployment = (
-            PROJECT_ROOT / "charts" / "verdikt" / "templates" / "deployment.yaml"
+            PROJECT_ROOT / "charts" / "judikt" / "templates" / "deployment.yaml"
         ).read_text()
         pvc = (
-            PROJECT_ROOT / "charts" / "verdikt" / "templates" / "pvc.yaml"
+            PROJECT_ROOT / "charts" / "judikt" / "templates" / "pvc.yaml"
         ).read_text()
         self.assertIn("mountPath: /app/data", deployment)
         self.assertIn("persistentVolumeClaim", deployment)
-        self.assertIn("VERDIKT_AUDIT_SINK", deployment)
-        self.assertIn("VERDIKT_SIEM_URL", deployment)
-        self.assertIn("VERDIKT_SIEM_TOKEN", deployment)
+        self.assertIn("JUDIKT_AUDIT_SINK", deployment)
+        self.assertIn("JUDIKT_SIEM_URL", deployment)
+        self.assertIn("JUDIKT_SIEM_TOKEN", deployment)
         self.assertIn("kind: PersistentVolumeClaim", pvc)
 
     def test_container_and_kubernetes_run_as_non_root(self) -> None:
         dockerfile = (PROJECT_ROOT / "Dockerfile").read_text()
         deployment = (
-            PROJECT_ROOT / "charts" / "verdikt" / "templates" / "deployment.yaml"
+            PROJECT_ROOT / "charts" / "judikt" / "templates" / "deployment.yaml"
         ).read_text()
         terraform = (PROJECT_ROOT / "infra" / "aws" / "terraform" / "main.tf").read_text()
         cloudformation = (
-            PROJECT_ROOT / "infra" / "aws" / "cloudformation" / "verdikt-ec2.yml"
+            PROJECT_ROOT / "infra" / "aws" / "cloudformation" / "judikt-ec2.yml"
         ).read_text()
 
         self.assertIn("USER 10001:10001", dockerfile)
@@ -169,14 +169,14 @@ class DeploymentArtifactTest(unittest.TestCase):
         self.assertIn("automountServiceAccountToken: false", deployment)
         self.assertIn(".Values.securityContext", deployment)
         self.assertIn(".Values.podSecurityContext", deployment)
-        self.assertIn("VERDIKT_RESOURCE_URI", deployment)
-        self.assertIn("VERDIKT_AUTHORIZATION_SERVER", deployment)
-        self.assertIn("VERDIKT_REQUIRED_SCOPES", deployment)
-        self.assertIn("install -d -o 10001 -g 10001 /opt/verdikt/data", terraform)
-        self.assertIn("install -d -o 10001 -g 10001 /opt/verdikt/data", cloudformation)
+        self.assertIn("JUDIKT_RESOURCE_URI", deployment)
+        self.assertIn("JUDIKT_AUTHORIZATION_SERVER", deployment)
+        self.assertIn("JUDIKT_REQUIRED_SCOPES", deployment)
+        self.assertIn("install -d -o 10001 -g 10001 /opt/judikt/data", terraform)
+        self.assertIn("install -d -o 10001 -g 10001 /opt/judikt/data", cloudformation)
 
-        values = (PROJECT_ROOT / "charts" / "verdikt" / "values.yaml").read_text()
-        secret = (PROJECT_ROOT / "charts" / "verdikt" / "templates" / "secret.yaml").read_text()
+        values = (PROJECT_ROOT / "charts" / "judikt" / "values.yaml").read_text()
+        secret = (PROJECT_ROOT / "charts" / "judikt" / "templates" / "secret.yaml").read_text()
         self.assertNotIn('approvalSecret: "change-me"', values)
         self.assertIn('required "approvalSecret is required"', secret)
         self.assertIn("static bearer and JWT authentication cannot be enabled together", secret)

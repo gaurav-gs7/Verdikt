@@ -7,8 +7,8 @@ import unittest
 import urllib.error
 from unittest import mock
 
-from verdikt.groq import IncidentAnalyst, MAX_REQUEST_BYTES
-from verdikt.telemetry import Telemetry
+from judikt.groq import IncidentAnalyst, MAX_REQUEST_BYTES
+from judikt.telemetry import Telemetry
 
 
 class Response(io.BytesIO):
@@ -95,7 +95,7 @@ class GroqIncidentAnalystTest(unittest.TestCase):
         with mock.patch.dict(
             os.environ, {"GROQ_API_KEY_SECRET_ARN": "groq-secret"}, clear=True
         ), mock.patch(
-            "verdikt.groq.resolve_configured_secret", return_value="brokered-key"
+            "judikt.groq.resolve_configured_secret", return_value="brokered-key"
         ) as resolve:
             analyst = IncidentAnalyst(telemetry=Telemetry("disabled"))
 

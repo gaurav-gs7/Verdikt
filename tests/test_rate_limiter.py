@@ -6,7 +6,7 @@ import types
 import unittest
 from unittest.mock import patch
 
-from verdikt.rate_limiter import LocalRateLimiter, RedisRateLimiter, build_rate_limiter
+from judikt.rate_limiter import LocalRateLimiter, RedisRateLimiter, build_rate_limiter
 
 
 class LocalRateLimiterTest(unittest.TestCase):
@@ -19,7 +19,7 @@ class LocalRateLimiterTest(unittest.TestCase):
 
     def test_window_expiry_and_key_isolation(self) -> None:
         limiter = LocalRateLimiter()
-        with patch("verdikt.rate_limiter.time.monotonic", side_effect=[0.0, 0.0, 10.0]):
+        with patch("judikt.rate_limiter.time.monotonic", side_effect=[0.0, 0.0, 10.0]):
             self.assertTrue(limiter.allow("first", 1, 10))
             self.assertTrue(limiter.allow("second", 1, 10))
             self.assertTrue(limiter.allow("first", 1, 10))
@@ -36,11 +36,11 @@ class LocalRateLimiterTest(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "VERDIKT_REDIS_URL": "redis://unavailable:6379/0",
-                "VERDIKT_REDIS_REQUIRED": "false",
+                "JUDIKT_REDIS_URL": "redis://unavailable:6379/0",
+                "JUDIKT_REDIS_REQUIRED": "false",
             },
             clear=False,
-        ), patch("verdikt.rate_limiter.RedisRateLimiter", side_effect=RuntimeError("unavailable")):
+        ), patch("judikt.rate_limiter.RedisRateLimiter", side_effect=RuntimeError("unavailable")):
             limiter = build_rate_limiter()
 
         self.assertEqual(limiter.mode, "local-fallback")
@@ -49,11 +49,11 @@ class LocalRateLimiterTest(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "VERDIKT_REDIS_URL": "redis://unavailable:6379/0",
-                "VERDIKT_REDIS_REQUIRED": "true",
+                "JUDIKT_REDIS_URL": "redis://unavailable:6379/0",
+                "JUDIKT_REDIS_REQUIRED": "true",
             },
             clear=False,
-        ), patch("verdikt.rate_limiter.RedisRateLimiter", side_effect=RuntimeError("unavailable")):
+        ), patch("judikt.rate_limiter.RedisRateLimiter", side_effect=RuntimeError("unavailable")):
             with self.assertRaisesRegex(RuntimeError, "unavailable"):
                 build_rate_limiter()
 
