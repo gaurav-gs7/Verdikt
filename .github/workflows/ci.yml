@@ -21,6 +21,7 @@ jobs:
           python -m pip install -e '.[mcp,observability,auth,redis,aws,test,quality]'
       - name: Run static and dependency checks
         run: |
+          ruff --version
           ruff check src tests
           python -m pip check
           pip-audit

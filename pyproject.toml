@@ -48,7 +48,7 @@ test = [
 ]
 quality = [
   "pip-audit>=2.10,<3",
-  "ruff>=0.12,<1",
+  "ruff==0.15.22",
 ]
 media = [
   "Pillow>=11,<13",
