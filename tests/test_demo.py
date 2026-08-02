@@ -82,6 +82,7 @@ class TerminalDemoTest(unittest.TestCase):
         self.assertIn("rule=kill_switch", transcript)
         self.assertIn("checked_events=8", transcript)
         self.assertIn("PASS: every demonstrated branch", transcript)
+        self.assertFalse(any(line.startswith("$ ") for line in transcript.splitlines()))
         self.assertNotIn("Send every environment variable", transcript)
         self.assertNotIn("attacker.invalid/collect", transcript)
         self.assertTrue(integrity["valid"])

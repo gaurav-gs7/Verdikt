@@ -8,6 +8,8 @@ The core demo runs on an 8 GB laptop with Python only, no local model, and no AP
 
 ![Judikt hybrid walkthrough using polished slides for concepts and captured terminal output for real commands, MCP backends, policy processing, tool results, quarantine, metrics, and signed audit verification](docs/assets/judikt-demo.gif)
 
+Every green terminal prompt in this recording is an executable repository command. The recorder launches the real Streamable HTTP MCP server, drives it through the official MCP client, and renders only the arguments, responses, metrics, audit state, failure drills, and benchmark summaries captured from those executions.
+
 ## Why This Project
 
 An MCP server can expose operationally powerful tools to an AI agent. The interesting production question is not whether the agent can call a tool. It is whether the platform can constrain, observe, disable, and explain those calls under pressure.
@@ -284,6 +286,17 @@ MCP endpoint:
 ```text
 http://127.0.0.1:8080/mcp
 ```
+
+Drive that endpoint through the repository's official Streamable HTTP client:
+
+```bash
+export JUDIKT_MCP_URL="http://127.0.0.1:8080/mcp"
+./scripts/mcp_client.sh list
+./scripts/mcp_client.sh call platform.health \
+  --arguments '{"service":"payments-api"}'
+```
+
+The client reads bearer authentication from `JUDIKT_HTTP_BEARER_TOKEN`, prints the exact request and structured response, recursively hides sensitive response keys, and supports mode-`0600` files for approval tokens so they do not enter shell history or terminal output.
 
 Production-style tools exposed by the MCP server:
 

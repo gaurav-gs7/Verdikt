@@ -57,7 +57,7 @@ def run_demo(runtime: JudiktRuntime) -> None:
         rollback_arguments,
     )
 
-    print("\n$ policy.issue_approval(actor='interview-demo', ttl_seconds=300)")
+    print("\nAPPROVAL API | PolicyEngine.issue_approval(actor='interview-demo', ttl_seconds=300)")
     approval_token = runtime.policy.issue_approval(
         actor="interview-demo",
         reason="rollback after elevated payments-api 5xx rate",
@@ -168,7 +168,7 @@ def _call(
     correlation_id = f"terminal-demo-{number:02d}"
     visible_arguments = runtime.policy.redact(arguments)
     print(f"\n## {number:02d} {title}")
-    print("$ MCP tools/call")
+    print("MCP REQUEST | method=tools/call")
     print(f"  server    = {server}")
     print(f"  tool      = {tool}")
     print(f"  arguments = {_compact(visible_arguments)}")
@@ -220,11 +220,11 @@ def _evidence(runtime: JudiktRuntime) -> None:
     metrics = runtime.metrics.render().splitlines()
     counters = [line for line in metrics if line.startswith("judikt_tool_calls_total{")]
     print("\n## 09 VERIFY THE OPERATIONAL EVIDENCE")
-    print("$ audit.verify_chain()")
+    print("AUDIT API | AuditStore.verify_chain()")
     print(f"  valid={str(integrity['valid']).lower()}")
     print(f"  checked_events={integrity['checked_events']}")
     print(f"  head_hash={str(integrity['head_hash'])[:32]}...")
-    print("\n$ runtime.metrics.render()  # Prometheus exposition")
+    print("\nMETRICS API | Metrics.render() -> Prometheus exposition")
     for line in counters:
         print(f"  {line}")
     print("\nPASS: every demonstrated branch produced correlated, tamper-evident evidence.")

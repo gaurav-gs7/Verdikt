@@ -1,0 +1,7 @@
+{
+  "service": "payments-api",
+  "version": "payments-api@2026.05.2",
+  "actor": "sre-oncall",
+  "environment": "production",
+  "rollback_plan": "verify health and restore the previous known-good release if errors increase"
+}

@@ -1,0 +1,7 @@
+{
+  "server": "external-incidents",
+  "tool": "external.fetch_issue",
+  "arguments": {
+    "issue_id": "INC-2048"
+  }
+}

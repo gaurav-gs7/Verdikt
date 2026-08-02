@@ -1,0 +1,8 @@
+{
+  "namespace": "prod",
+  "pod": "payment-service-xyz",
+  "actor": "sre-oncall",
+  "environment": "production",
+  "rollback_plan": "wait for replacement readiness and restore the workload if health checks fail",
+  "dry_run": true
+}

