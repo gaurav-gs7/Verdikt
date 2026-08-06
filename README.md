@@ -4,7 +4,7 @@ Judikt is a deterministic security and reliability control plane for Model Conte
 
 The core demo runs on an 8 GB laptop with Python only, no local model, and no API key. Optional profiles add the official MCP SDK, Redis, OpenTelemetry/OpenInference, Docker observability, AWS deployment, and a Groq incident summary. No LLM participates in an allow or deny decision.
 
-## 150-Second Product and Live Terminal Demo
+## Product and Live Terminal Demo
 
 ![Judikt hybrid walkthrough using polished slides for concepts and captured terminal output for real commands, MCP backends, policy processing, tool results, quarantine, metrics, and signed audit verification](docs/assets/judikt-demo.gif)
 
